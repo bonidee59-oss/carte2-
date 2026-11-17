@@ -1,0 +1,42 @@
+{
+  "name": "cartesid-bf",
+  "version": "1.0.0",
+  "description": "CartesID BF — cartes d'identité scolaires et préscolaires (Burkina Faso)",
+  "main": "main.js",
+  "author": "CartesID",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "bf.cartesid.app",
+    "productName": "CartesID BF",
+    "directories": { "output": "dist" },
+    "files": ["index.html", "main.js", "manifest.json", "icons/**/*"],
+    "win": {
+      "icon": "icons/icon-512.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "language": "1036",
+      "artifactName": "CartesID-BF-Installateur-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "CartesID-BF-Portable-${version}.${ext}"
+    }
+  }
+}
