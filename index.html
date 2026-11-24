@@ -511,6 +511,8 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     { id: "eveil-nature",  nom: "Éveil Nature",       primary: "#1E8E5A", secondary: "#FCD116", text: "#12301F", bg: "#F1FAF3", font: "sans", border: "aucune", radius: 16, watermark: false, hologram: false, fontScale: 1.25, orientation: "horizontal", preschool: true },
     { id: "eveil-ocean",   nom: "Éveil Océan",        primary: "#1769C2", secondary: "#FFB703", text: "#10243E", bg: "#EFF6FF", font: "sans", border: "aucune", radius: 16, watermark: false, hologram: false, fontScale: 1.25, orientation: "horizontal", preschool: true },
     { id: "eveil-arcenciel", nom: "Éveil Arc-en-ciel", primary: "#7B3FC4", secondary: "#FF5D8F", text: "#2A1744", bg: "#FFF5FA", font: "sans", border: "solide", radius: 18, watermark: false, hologram: false, fontScale: 1.25, orientation: "horizontal", preschool: true },
+    { id: "eveil-bonbon",   nom: "Éveil Bonbon",      primary: "#D6336C", secondary: "#FFC857", text: "#3A1020", bg: "#FFF0F5", font: "sans", border: "aucune", radius: 16, watermark: false, hologram: false, fontScale: 1.25, orientation: "horizontal", preschool: true },
+    { id: "eveil-tropical", nom: "Éveil Tropical",    primary: "#0E8F9B", secondary: "#FF8A5B", text: "#0B2F34", bg: "#ECFAFB", font: "sans", border: "aucune", radius: 16, watermark: false, hologram: false, fontScale: 1.25, orientation: "horizontal", preschool: true },
     { id: "eveil-vertical", nom: "Éveil Vertical",    primary: "#1E8E5A", secondary: "#FFD23F", text: "#12301F", bg: "#FFFFFF", font: "sans", border: "aucune", radius: 18, watermark: false, hologram: false, fontScale: 1.25, orientation: "vertical", preschool: true }
   ];
 
@@ -681,22 +683,34 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     ctx.closePath();
     ctx.fillStyle = color; ctx.fill();
   }
+  var ACCENTS = ["#FF6B6B", "#FFB703", "#2EC4B6", "#4D96FF", "#B15DFF", "#FF8FB1"];
   function drawDecor(ctx, W, H, tpl, vertical){
     ctx.save();
     var spots = vertical
-      ? [[70,320,60,0],[570,380,40,1],[540,640,56,0],[60,760,34,1],[560,900,46,1],[90,950,52,0]]
-      : [[330,250,90,0],[640,210,46,1],[930,330,70,0],[360,590,40,1],[980,560,56,1],[620,330,30,0]];
+      ? [[58,300,52,0],[585,325,34,1],[572,640,48,0],[48,700,30,1],[578,880,40,1],[66,930,46,0],[150,820,18,2],[520,470,22,2],[560,780,16,2]]
+      : [[330,215,80,0],[655,205,40,1],[945,300,64,0],[345,585,34,1],[985,545,50,1],[625,335,26,2],[470,565,22,2],[905,215,30,2],[60,575,22,2]];
     spots.forEach(function(s, i){
-      ctx.fillStyle = withAlpha(i % 2 ? tpl.secondary : tpl.primary, 0.09);
-      if (s[3]) { starPath(ctx, s[0], s[1], s[2], s[2] * 0.42); ctx.fill(); }
-      else { ctx.beginPath(); ctx.arc(s[0], s[1], s[2], 0, Math.PI * 2); ctx.fill(); }
+      var col = ACCENTS[i % ACCENTS.length];
+      if (s[3] === 1) { ctx.fillStyle = withAlpha(col, 0.26); starPath(ctx, s[0], s[1], s[2], s[2] * 0.42); ctx.fill(); }
+      else if (s[3] === 2) { ctx.strokeStyle = withAlpha(col, 0.45); ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(s[0], s[1], s[2], 0, Math.PI * 2); ctx.stroke(); }
+      else { ctx.fillStyle = withAlpha(col, 0.2); ctx.beginPath(); ctx.arc(s[0], s[1], s[2], 0, Math.PI * 2); ctx.fill(); }
     });
+    ctx.restore();
+  }
+  function drawBunting(ctx, W, y, amp, period, size){
+    ctx.save();
+    for (var x = 22, i = 0; x < W; x += 44, i++){
+      var yy = y + Math.sin(x / period * Math.PI * 2) * amp - 2;
+      ctx.beginPath(); ctx.moveTo(x - 16, yy); ctx.lineTo(x + 16, yy); ctx.lineTo(x, yy + size); ctx.closePath();
+      ctx.fillStyle = ACCENTS[i % ACCENTS.length]; ctx.fill();
+    }
     ctx.restore();
   }
   function drawPhotoBox(ctx, img, x, y, w, h, tpl){
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,.18)"; ctx.shadowBlur = 14; ctx.shadowOffsetY = 4;
-    rrPath(ctx, x - 7, y - 7, w + 14, h + 14, 30); ctx.fillStyle = tpl.secondary; ctx.fill();
+    var g = ctx.createLinearGradient(x - 7, y - 7, x + w + 7, y + h + 7); ACCENTS.forEach(function(c, i){ g.addColorStop(i / (ACCENTS.length - 1), c); });
+    rrPath(ctx, x - 7, y - 7, w + 14, h + 14, 30); ctx.fillStyle = g; ctx.fill();
     ctx.restore();
     if (img) {
       drawCover(ctx, img, x, y, w, h, 24);
@@ -713,6 +727,7 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,.15)"; ctx.shadowBlur = 10; ctx.shadowOffsetY = 3;
     rrPath(ctx, x - 10, y - 10, size + 20, size + 20, 16); ctx.fillStyle = "#FFFFFF"; ctx.fill();
+    ctx.shadowColor = "transparent"; ctx.lineWidth = 4; ctx.strokeStyle = ACCENTS[3]; ctx.stroke();
     ctx.restore();
     try { drawQRModule(ctx, text, x, y, size, "#111111", "#FFFFFF", "M"); } catch(e){}
   }
@@ -721,10 +736,11 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     var t = parts.join("|");
     try { return sanitizeForQR(t); } catch(e){ return t.slice(0, 300); }
   }
-  function drawLabelValue(ctx, label, value, x, y, maxW, tpl, stack, vSize){
+  function drawLabelValue(ctx, label, value, x, y, maxW, tpl, stack, vSize, accent){
+    ctx.beginPath(); ctx.arc(x + 6, y - 5, 6, 0, Math.PI * 2); ctx.fillStyle = accent || tpl.primary; ctx.fill();
     setFont(ctx, "700", 14, stack);
-    ctx.fillStyle = withAlpha(tpl.text, 0.62); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    ctx.fillText(label.toUpperCase(), x, y);
+    ctx.fillStyle = withAlpha(tpl.text, 0.66); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(label.toUpperCase(), x + 18, y);
     var v = fit(ctx, value || "—", maxW, vSize, 15, "700", stack);
     ctx.fillStyle = tpl.text;
     ctx.fillText(v, x, y + vSize + 6);
@@ -756,6 +772,7 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
   function drawHeader(ctx, W, hh, tpl, stack, school, logoImg, title, vertical){
     drawWaveBand(ctx, W, hh, tpl.secondary, 7, 220);
     drawWaveBand(ctx, W, hh - 9, tpl.primary, 7, 220);
+    drawBunting(ctx, W, hh, 7, 220, vertical ? 16 : 18);
     var cx = vertical ? W / 2 : 100, cy = vertical ? 112 : 78, r = vertical ? 48 : 52;
     drawLogo(ctx, logoImg, cx, cy, r, tpl);
     ctx.textBaseline = "alphabetic";
@@ -785,7 +802,7 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     var fh = 46;
     ctx.save();
     ctx.fillStyle = tpl.primary; ctx.fillRect(0, H - fh, W, fh);
-    ctx.fillStyle = tpl.secondary; ctx.fillRect(0, H - fh, W, 5);
+    var sg = Math.ceil(W / ACCENTS.length); ACCENTS.forEach(function(c, i){ ctx.fillStyle = c; ctx.fillRect(i * sg, H - fh, sg, 6); });
     ctx.fillStyle = "#FFFFFF"; ctx.textBaseline = "middle";
     ctx.textAlign = "left"; setFont(ctx, "700", 19, stack); ctx.fillText(fit(ctx, left, W / 2 - 40, 19, 11, "700", stack), 40, H - fh / 2 + 2);
     ctx.textAlign = "right"; ctx.fillText(fit(ctx, right, W / 2 - 40, 19, 11, "700", stack), W - 40, H - fh / 2 + 2);
@@ -810,12 +827,12 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     if (!vertical){
       drawPhotoBox(ctx, photo, 52, 186, 262, 350, tpl);
       var x = 350;
-      drawLabelValue(ctx, "Nom", nom, x, 204, 610, tpl, stack, 40);
-      drawLabelValue(ctx, "Prénom(s)", prenom, x, 276, 610, tpl, stack, 34);
+      drawLabelValue(ctx, "Nom", nom, x, 204, 610, tpl, stack, 40, ACCENTS[0]);
+      drawLabelValue(ctx, "Prénom(s)", prenom, x, 276, 610, tpl, stack, 34, ACCENTS[1]);
       if (section) drawPill(ctx, section, x, 346, 50, tpl, stack, 26, "left", 380);
-      drawLabelValue(ctx, "Né(e) le", fmtDate(stu.dateNaissance), x, 424, 230, tpl, stack, 26);
-      drawLabelValue(ctx, "Sexe", sexeLabel(stu.sexe), x + 250, 424, 190, tpl, stack, 26);
-      drawLabelValue(ctx, "Lieu de naissance", stu.lieuNaissance, x, 488, 440, tpl, stack, 26);
+      drawLabelValue(ctx, "Né(e) le", fmtDate(stu.dateNaissance), x, 424, 230, tpl, stack, 26, ACCENTS[2]);
+      drawLabelValue(ctx, "Sexe", sexeLabel(stu.sexe), x + 250, 424, 190, tpl, stack, 26, ACCENTS[3]);
+      drawLabelValue(ctx, "Lieu de naissance", stu.lieuNaissance, x, 488, 440, tpl, stack, 26, ACCENTS[4]);
       drawQRBox(ctx, qr, W - 52 - 138, 410, 138, tpl);
     } else {
       drawPhotoBox(ctx, photo, (W - 270) / 2, 276, 270, 340, tpl);
@@ -835,23 +852,38 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
   }
 
   /* -------------------------------- VERSO ---------------------------------- */
-  function drawInfoCard(ctx, x, y, w, h, title, tpl, stack){
+  var VERSO_KEYS = [
+    ["parent", "Parent / Tuteur"],
+    ["urgence", "Personne à prévenir"],
+    ["autorises", "Personnes autorisées à récupérer l'enfant"],
+    ["sante", "Santé (groupe sanguin, allergies)"],
+    ["retour", "Message « si cette carte est trouvée »"],
+    ["signature", "Signature et cachet du directeur"],
+    ["delivrance", "Dates de délivrance / d'expiration"]
+  ];
+  function versoOpts(){
+    var s = (getSettings().preschoolVerso) || {}, o = {};
+    VERSO_KEYS.forEach(function(k){ o[k[0]] = s[k[0]] !== false; });
+    return o;
+  }
+  function drawInfoCard(ctx, x, y, w, h, title, bar, titleColor, stack){
     ctx.save();
     rrPath(ctx, x, y, w, h, 18); ctx.fillStyle = "#FFFFFF"; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = withAlpha(tpl.primary, 0.35); ctx.stroke();
-    rrPath(ctx, x, y, 10, h, 5); ctx.fillStyle = tpl.primary; ctx.fill();
+    ctx.lineWidth = 2.5; ctx.strokeStyle = withAlpha(bar, 0.55); ctx.stroke();
+    rrPath(ctx, x, y, 12, h, 6); ctx.fillStyle = bar; ctx.fill();
     ctx.restore();
     setFont(ctx, "800", 15, stack);
-    ctx.fillStyle = tpl.primary; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-    ctx.fillText(title.toUpperCase(), x + 26, y + 28);
+    ctx.fillStyle = titleColor; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillText(title.toUpperCase(), x + 28, y + 28);
   }
-  function drawPerson(ctx, name, tel, x, y, maxW, tpl, stack, size, badge){
+  function drawPerson(ctx, name, tel, x, y, maxW, tpl, stack, size, badge, badgeColor){
     var nx = x;
     if (badge){
-      ctx.beginPath(); ctx.arc(x + 17, y - 8, 17, 0, Math.PI * 2); ctx.fillStyle = tpl.secondary; ctx.fill();
-      ctx.fillStyle = tpl.text; setFont(ctx, "800", 19, stack); ctx.textAlign = "center"; ctx.fillText(String(badge), x + 17, y - 1); ctx.textAlign = "left";
+      ctx.beginPath(); ctx.arc(x + 17, y - 8, 17, 0, Math.PI * 2); ctx.fillStyle = badgeColor || tpl.secondary; ctx.fill();
+      ctx.fillStyle = "#FFFFFF"; setFont(ctx, "800", 19, stack); ctx.textAlign = "center"; ctx.fillText(String(badge), x + 17, y - 1); ctx.textAlign = "left";
       nx = x + 44;
     }
+    setFont(ctx, "700", size, stack);
     ctx.fillStyle = tpl.text;
     var n = fit(ctx, name || "—", maxW - (nx - x), size, 13, "700", stack);
     ctx.fillText(n, nx, y);
@@ -861,85 +893,104 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
       ctx.fillText("☎ " + tel, nx, y + Math.max(24, size));
     }
   }
-  function chip(ctx, text, x, y, tpl, stack, bg, fg, maxW){
-    setFont(ctx, "700", 19, stack);
+  function chip(ctx, text, x, y, stack, bg, fg, maxW){
     var t = fit(ctx, text, maxW - 28, 19, 11, "700", stack);
+    setFont(ctx, "700", 19, stack);
     var w = ctx.measureText(t).width + 28;
     rrPath(ctx, x, y, w, 36, 18); ctx.fillStyle = bg; ctx.fill();
-    ctx.fillStyle = fg; ctx.textBaseline = "middle"; ctx.fillText(t, x + 14, y + 19); ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = fg; ctx.textBaseline = "middle"; ctx.textAlign = "left"; ctx.fillText(t, x + 14, y + 19); ctx.textBaseline = "alphabetic";
     return w;
   }
+
+  function buildVersoBlocks(ctx, stu, school, tpl, stack, o, imgs, bw){
+    var blocks = [];
+    var lienTxt = stu.lienParente ? (" (" + stu.lienParente + ")") : "";
+    var allergies = (stu.allergies || "").trim(), blood = (stu.groupeSanguin || "").trim();
+
+    if (o.parent) blocks.push({ h: 108, draw: function(x, y, w){
+      drawInfoCard(ctx, x, y, w, 108, "Parent / Tuteur", "#4D96FF", "#2B63C0", stack);
+      drawPerson(ctx, ((stu.parentNom || "") + lienTxt) || "—", stu.telParent, x + 28, y + 62, w - 44, tpl, stack, 24);
+    }});
+    if (o.urgence) blocks.push({ h: 108, draw: function(x, y, w){
+      drawInfoCard(ctx, x, y, w, 108, "Personne à prévenir", "#FF6B6B", "#C73A3A", stack);
+      drawPerson(ctx, stu.personneUrgence || "—", stu.telUrgence, x + 28, y + 62, w - 44, tpl, stack, 24);
+    }});
+    if (o.autorises) blocks.push({ h: 176, draw: function(x, y, w){
+      drawInfoCard(ctx, x, y, w, 176, "Personnes autorisées à récupérer l'enfant", "#2EC4B6", "#0E7F76", stack);
+      drawPerson(ctx, stu.autorise1 || "—", stu.autorise1Tel, x + 28, y + 70, w - 44, tpl, stack, 24, 1, "#2EC4B6");
+      drawPerson(ctx, stu.autorise2 || "—", stu.autorise2Tel, x + 28, y + 134, w - 44, tpl, stack, 24, 2, "#FF8A00");
+    }});
+    if (o.sante && (blood || allergies)){
+      var n = (blood ? 1 : 0) + (allergies ? 1 : 0);
+      blocks.push({ h: n * 36 + (n - 1) * 10, draw: function(x, y, w){
+        var yy = y;
+        if (blood){ chip(ctx, "Groupe sanguin : " + blood, x, yy, stack, "#DCEBFF", "#1F4F99", w); yy += 46; }
+        if (allergies) chip(ctx, "⚠ Allergies : " + allergies, x, yy, stack, "#FDE2E1", "#8A1C14", w);
+      }});
+    }
+    if (o.retour){
+      setFont(ctx, "600", 16, stack);
+      var adr = [school.adresse, school.telephone].filter(Boolean).join(" · ");
+      var msg = "Si cette carte est trouvée, merci de la rapporter à : " + (school.nom || "l'établissement") + (adr ? " — " + adr : "") + ".";
+      var lines = wrapLines(ctx, msg, bw - 20, 3);
+      blocks.push({ h: lines.length * 22 + 6, draw: function(x, y, w){
+        rrPath(ctx, x, y + 2, 5, lines.length * 22 - 2, 3); ctx.fillStyle = "#B15DFF"; ctx.fill();
+        setFont(ctx, "600", 16, stack); ctx.fillStyle = withAlpha(tpl.text, 0.85); ctx.textAlign = "left";
+        lines.forEach(function(ln, i){ ctx.fillText(ln, x + 16, y + 17 + i * 22); });
+      }});
+    }
+    if (o.signature) blocks.push({ h: 124, draw: function(x, y, w){
+      var cx = x + w / 2;
+      setFont(ctx, "800", 14, stack); ctx.fillStyle = withAlpha(tpl.text, 0.75); ctx.textAlign = "center";
+      ctx.fillText("LE DIRECTEUR / LA DIRECTRICE", cx, y + 16);
+      if (imgs.cachet) drawContain(ctx, imgs.cachet, cx - 150, y + 24, 130, 78);
+      if (imgs.sign) drawContain(ctx, imgs.sign, cx - 6, y + 28, 140, 70);
+      if (school.directeur){ setFont(ctx, "700", 17, stack); ctx.fillStyle = tpl.text; ctx.fillText(fit(ctx, school.directeur, w - 20, 17, 11, "700", stack), cx, y + 118); }
+      ctx.textAlign = "left";
+    }});
+    if (o.delivrance && stu.dateDelivrance) blocks.push({ h: 24, draw: function(x, y, w){
+      setFont(ctx, "600", 15, stack); ctx.fillStyle = withAlpha(tpl.text, 0.72); ctx.textAlign = "left";
+      ctx.fillText("Délivrée le " + fmtDate(stu.dateDelivrance) + (stu.dateExpiration ? " · Expire le " + fmtDate(stu.dateExpiration) : ""), x, y + 16);
+    }});
+    return blocks;
+  }
+
   async function drawVerso(ctx, W, H, stu, tpl, school, stack, vertical){
-    var imgs = await Promise.all([safeImg(school && school.logo), safeImg(school && school.directeurSignature), safeImg(school && school.cachet)]);
-    var logo = imgs[0], sign = imgs[1], cachet = imgs[2];
+    var im = await Promise.all([safeImg(school.logo), safeImg(school.directeurSignature), safeImg(school.cachet)]);
+    var imgs = { logo: im[0], sign: im[1], cachet: im[2] };
     drawDecor(ctx, W, H, tpl, vertical);
     var hh = vertical ? 124 : 96;
     drawWaveBand(ctx, W, hh, tpl.secondary, 6, 200);
     drawWaveBand(ctx, W, hh - 8, tpl.primary, 6, 200);
-    drawLogo(ctx, logo, 66, hh / 2 - 6, vertical ? 36 : 36, tpl);
+    drawBunting(ctx, W, hh, 6, 200, 15);
+    drawLogo(ctx, imgs.logo, 66, hh / 2 - 6, 36, tpl);
     ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     var t = fit(ctx, "INFORMATIONS UTILES · EN CAS D'URGENCE", W - 200, vertical ? 24 : 30, 13, "800", stack);
     ctx.fillText(t, 118, hh / 2 - 6);
     ctx.fillStyle = tpl.secondary;
-    var s = fit(ctx, ((school && school.nom) || "").toUpperCase(), W - 200, 18, 10, "700", stack);
+    var s = fit(ctx, (school.nom || "").toUpperCase(), W - 200, 18, 10, "700", stack);
     ctx.fillText(s, 118, hh / 2 + 22);
-    drawFooter(ctx, W, H, tpl, stack, school && school.telephone ? ("☎ " + school.telephone) : (school && school.email) || "", (stu.nom || "").toUpperCase() + " " + (stu.prenom || ""));
+    drawFooter(ctx, W, H, tpl, stack, school.telephone ? ("☎ " + school.telephone) : (school.email || ""), (stu.nom || "").toUpperCase() + " " + (stu.prenom || ""));
 
-    var lienTxt = stu.lienParente ? (" (" + stu.lienParente + ")") : "";
-    var allergies = (stu.allergies || "").trim();
-    var bloodTxt = (stu.groupeSanguin || "").trim();
-
-    if (!vertical){
-      var colL = 40, wL = 440, colR = 506, wR = 466;
-      drawInfoCard(ctx, colL, 112, wL, 120, "Parent / Tuteur", tpl, stack);
-      drawPerson(ctx, (stu.parentNom || "") + lienTxt || "", stu.telParent, colL + 26, 170, wL - 40, tpl, stack, 24);
-      drawInfoCard(ctx, colL, 244, wL, 120, "Personne à prévenir", tpl, stack);
-      drawPerson(ctx, stu.personneUrgence, stu.telUrgence, colL + 26, 302, wL - 40, tpl, stack, 24);
-      // santé
-      var cy = 384, cx = colL;
-      var w1 = chip(ctx, "Groupe sanguin : " + (bloodTxt || "—"), cx, cy, tpl, stack, withAlpha(tpl.primary, 0.14), tpl.text, wL);
-      if (allergies){
-        chip(ctx, "⚠ Allergies : " + allergies, cx, cy + 46, tpl, stack, "#FDE2E1", "#8A1C14", wL);
-      }
-      drawInfoCard(ctx, colR, 112, wR, 252, "Personnes autorisées à récupérer l'enfant", tpl, stack);
-      drawPerson(ctx, stu.autorise1, stu.autorise1Tel, colR + 26, 184, wR - 40, tpl, stack, 24, 1);
-      drawPerson(ctx, stu.autorise2, stu.autorise2Tel, colR + 26, 272, wR - 40, tpl, stack, 24, 2);
-      // bloc bas
-      ctx.fillStyle = withAlpha(tpl.text, 0.8); setFont(ctx, "600", 17, stack);
-      var adr = [school && school.adresse, school && school.telephone].filter(Boolean).join(" · ");
-      var msg = "Si cette carte est trouvée, merci de la rapporter à : " + ((school && school.nom) || "l'établissement") + (adr ? " — " + adr : "") + ".";
-      var lines = wrapLines(ctx, msg, 500, 3);
-      lines.forEach(function(ln, i){ ctx.fillText(ln, colL, 498 + i * 24); });
-      // signature / cachet
-      var sx = 620, sy = 392, sw = 340;
-      ctx.fillStyle = withAlpha(tpl.text, 0.7); setFont(ctx, "700", 15, stack); ctx.textAlign = "center";
-      ctx.fillText(("Le Directeur / La Directrice").toUpperCase(), sx + sw / 2, 424);
-      ctx.textAlign = "left";
-      if (cachet) drawContain(ctx, cachet, sx + 30, 436, 130, 90);
-      if (sign) drawContain(ctx, sign, sx + 170, 444, 140, 74);
-      if (school && school.directeur){ ctx.textAlign = "center"; ctx.fillStyle = tpl.text; setFont(ctx, "700", 17, stack); ctx.fillText(fit(ctx, school.directeur, 300, 17, 11, "700", stack), sx + sw / 2, 535); ctx.textAlign = "left"; }
-      if (stu.dateDelivrance){ ctx.fillStyle = withAlpha(tpl.text, 0.7); setFont(ctx, "600", 15, stack); ctx.fillText("Délivrée le " + fmtDate(stu.dateDelivrance) + (stu.dateExpiration ? " · Expire le " + fmtDate(stu.dateExpiration) : ""), colL, 575); }
-    } else {
-      var x0 = 44, w0 = W - 88;
-      drawInfoCard(ctx, x0, 150, w0, 110, "Parent / Tuteur", tpl, stack);
-      drawPerson(ctx, (stu.parentNom || "") + lienTxt || "", stu.telParent, x0 + 26, 206, w0 - 40, tpl, stack, 24);
-      drawInfoCard(ctx, x0, 274, w0, 110, "Personne à prévenir", tpl, stack);
-      drawPerson(ctx, stu.personneUrgence, stu.telUrgence, x0 + 26, 330, w0 - 40, tpl, stack, 24);
-      drawInfoCard(ctx, x0, 398, w0, 190, "Personnes autorisées à récupérer l'enfant", tpl, stack);
-      drawPerson(ctx, stu.autorise1, stu.autorise1Tel, x0 + 26, 462, w0 - 40, tpl, stack, 24, 1);
-      drawPerson(ctx, stu.autorise2, stu.autorise2Tel, x0 + 26, 534, w0 - 40, tpl, stack, 24, 2);
-      var cy2 = 612;
-      chip(ctx, "Groupe sanguin : " + (bloodTxt || "—"), x0, cy2, tpl, stack, withAlpha(tpl.primary, 0.14), tpl.text, w0);
-      if (allergies) chip(ctx, "⚠ Allergies : " + allergies, x0, cy2 + 46, tpl, stack, "#FDE2E1", "#8A1C14", w0);
-      ctx.fillStyle = withAlpha(tpl.text, 0.8); setFont(ctx, "600", 16, stack);
-      var adr2 = [school && school.adresse, school && school.telephone].filter(Boolean).join(" · ");
-      var msg2 = "Si cette carte est trouvée, merci de la rapporter à : " + ((school && school.nom) || "l'établissement") + (adr2 ? " — " + adr2 : "") + ".";
-      wrapLines(ctx, msg2, w0 - 200, 3).forEach(function(ln, i){ ctx.fillText(ln, x0, 800 + i * 22); });
-      if (cachet) drawContain(ctx, cachet, W - 44 - 190, 780, 100, 80);
-      if (sign) drawContain(ctx, sign, W - 44 - 120, 786, 110, 70);
-      if (school && school.directeur){ ctx.textAlign = "right"; ctx.fillStyle = tpl.text; setFont(ctx, "700", 16, stack); ctx.fillText(fit(ctx, school.directeur, 240, 16, 10, "700", stack), W - 44, 880); ctx.textAlign = "left"; }
-      if (stu.dateDelivrance){ ctx.fillStyle = withAlpha(tpl.text, 0.7); setFont(ctx, "600", 15, stack); ctx.fillText("Délivrée le " + fmtDate(stu.dateDelivrance) + (stu.dateExpiration ? " · Expire le " + fmtDate(stu.dateExpiration) : ""), x0, 920); }
-    }
+    var o = versoOpts();
+    var top = hh + 30, limit = H - 46 - 12;
+    var cols = vertical ? [{ x: 44, w: W - 88, items: [], h: 0 }] : [{ x: 40, w: 440, items: [], h: 0 }, { x: 506, w: 466, items: [], h: 0 }];
+    var blocks = buildVersoBlocks(ctx, stu, school, tpl, stack, o, imgs, cols[0].w);
+    var gap0 = 12;
+    blocks.forEach(function(b){
+      var best = null;
+      cols.forEach(function(c){
+        var need = c.h + (c.items.length ? gap0 : 0) + b.h;
+        if (top + need <= limit && (!best || c.h < best.h)) best = c;
+      });
+      if (best){ best.h += (best.items.length ? gap0 : 0) + b.h; best.items.push(b); }
+    });
+    cols.forEach(function(c){
+      var sum = c.items.reduce(function(a, b){ return a + b.h; }, 0);
+      var gap = c.items.length > 1 ? Math.max(gap0, Math.min(28, (limit - top - sum) / (c.items.length - 1))) : 0;
+      var y = top;
+      c.items.forEach(function(b){ b.draw(c.x, y, c.w); y += b.h + gap; });
+    });
   }
 
   /* -------------------------- point d'entrée du rendu ---------------------- */
@@ -1094,8 +1145,19 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
         + "<div style=\"display:flex;gap:8px;flex-wrap:wrap;\">"
         + "<button class=\"btn\" id=\"btnPreSaveTitle\" type=\"button\">Enregistrer le titre</button>"
         + "<button class=\"btn secondary\" id=\"btnPreAddSections\" type=\"button\">Ajouter / rétablir les sections</button>"
+        + "</div>"
+        + "<div style=\"margin-top:16px;\"><div style=\"font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;\">Rubriques affichées au verso de la carte</div>"
+        + "<p style=\"margin:2px 0 8px;font-size:12px;color:var(--ink-soft);\">Décochez une rubrique pour la supprimer du verso : les autres se réorganisent automatiquement.</p>"
+        + VERSO_KEYS.map(function(k){ var on = ((st.preschoolVerso || {})[k[0]] !== false); return "<label class=\"checklistItem\"><input type=\"checkbox\" data-vk=\"" + k[0] + "\"" + (on ? " checked" : "") + "> " + k[1] + "</label>"; }).join("")
         + "</div>";
       container.appendChild(card);
+      card.querySelectorAll("input[data-vk]").forEach(function(cb){
+        cb.addEventListener("change", function(){
+          var s2 = getSettings(); s2.preschoolVerso = s2.preschoolVerso || {};
+          s2.preschoolVerso[cb.getAttribute("data-vk")] = cb.checked;
+          setSettings(s2); toast("Verso mis à jour");
+        });
+      });
       document.getElementById("btnPreSaveTitle").addEventListener("click", function(){
         var s = getSettings();
         s.preschoolTitle = (document.getElementById("pre_titleInput").value || "").trim();

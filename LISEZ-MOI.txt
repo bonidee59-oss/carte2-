@@ -1,0 +1,6 @@
+CartesID BF - paquet pour fabriquer l'application Windows (.exe)
+
+1. Envoyez TOUT le contenu de ce dossier dans votre depot GitHub (y compris le dossier .github).
+2. Onglet Actions -> "Build Windows app" -> Run workflow.
+3. Attendez 3 a 5 minutes (coche verte), ouvrez l'execution et telechargez "CartesID-BF-Windows" (en bas, dans Artifacts).
+4. Decompressez : vous obtenez l'Installateur (.exe) et la version Portable (.exe).
