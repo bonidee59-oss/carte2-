@@ -1,7 +1,7 @@
 /* Service worker — CartesID BF
    Met l'application en cache pour un fonctionnement 100% hors ligne
    après la première visite. Aucune ressource externe : tout est local. */
-const CACHE_NAME = 'cartesid-bf-v22';
+const CACHE_NAME = 'cartesid-bf-v24';
 const APP_SHELL = [
   './',
   './index.html',

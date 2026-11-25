@@ -578,6 +578,27 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     return r;
   };
 
+  var SCALE_RECTO = [["logoEntete","Logo (en-tête)"],["titre","Titre de la carte"],["ecole","Nom de l'établissement"],["photo","Photo"],["nom","Nom"],["prenom","Prénom(s)"],["section","Section"],["naissance","Date de naissance"],["sexe","Sexe"],["lieu","Lieu de naissance"],["qr","QR code"]];
+  function scaleGetter(){
+    var o = (getSettings().preschoolScale) || {};
+    return function(k){ var v = +o[k]; if (!(v >= 30)) v = 100; if (v > 250) v = 250; return v / 100; };
+  }
+
+  function posGetter(vertical){
+    var all = (getSettings().preschoolPos) || {}, o = all[vertical ? "v" : "h"] || {};
+    return function(k){ var d = o[k]; return d ? { x: +d.x || 0, y: +d.y || 0 } : { x: 0, y: 0 }; };
+  }
+  /* dessine un élément déplaçable : applique son décalage et mémorise sa zone (pour le glisser-déposer) */
+  function mv(ctx, key, x, y, w, h, fn){
+    var d = ctx.__pos ? ctx.__pos(key) : { x: 0, y: 0 };
+    ctx.save();
+    if (d.x || d.y) ctx.translate(d.x, d.y);
+    var r = fn();
+    ctx.restore();
+    if (r){ if (r.w != null) w = r.w; if (r.x != null) x = r.x; }
+    if (ctx.__hits) ctx.__hits.push({ key: key, x: x + d.x, y: y + d.y, w: w, h: h });
+  }
+
   /* ------------------------------ dessin canvas ---------------------------- */
   function rrPath(ctx, x, y, w, h, r){
     r = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -769,31 +790,33 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
   }
 
   /* ------------------------------ entête commune --------------------------- */
-  function drawHeader(ctx, W, hh, tpl, stack, school, logoImg, title, vertical){
+  function drawHeader(ctx, W, hh, tpl, stack, school, logoImg, title, vertical, sc){
     drawWaveBand(ctx, W, hh, tpl.secondary, 7, 220);
     drawWaveBand(ctx, W, hh - 9, tpl.primary, 7, 220);
     drawBunting(ctx, W, hh, 7, 220, vertical ? 16 : 18);
-    var cx = vertical ? W / 2 : 100, cy = vertical ? 112 : 78, r = vertical ? 48 : 52;
-    drawLogo(ctx, logoImg, cx, cy, r, tpl);
+    var cx = vertical ? W / 2 : 100, cy = vertical ? 112 : 78;
+    var r = Math.max(18, Math.min((vertical ? 48 : 52) * sc("logoEntete"), vertical ? 64 : 66));
+    mv(ctx, "logoEntete", cx - r, cy - r, 2 * r, 2 * r, function(){ drawLogo(ctx, logoImg, cx, cy, r, tpl); });
     ctx.textBaseline = "alphabetic";
     var minis = (school && school.ministere) || "";
+    var tSize = vertical ? Math.min(32 * sc("titre"), 42) : Math.min(42 * sc("titre"), 56);
+    var eSize = vertical ? Math.min(22 * sc("ecole"), 30) : Math.min(26 * sc("ecole"), 34);
+    ctx.textAlign = "center";
     if (vertical){
-      ctx.textAlign = "center";
       ctx.fillStyle = "rgba(255,255,255,.88)";
-      var t1 = fit(ctx, minis, W - 80, 13, 9, "600", stack); ctx.fillText(t1, W / 2, 34);
-      ctx.fillStyle = "#FFFFFF";
-      var tt = fit(ctx, title, W - 80, 32, 16, "800", stack); ctx.fillText(tt, W / 2, 196);
-      ctx.fillStyle = tpl.secondary;
-      var sn = fit(ctx, ((school && school.nom) || "").toUpperCase(), W - 80, 22, 12, "700", stack); ctx.fillText(sn, W / 2, 226);
+      ctx.fillText(fit(ctx, minis, W - 80, 13, 9, "600", stack), W / 2, 34);
+      var vt = fit(ctx, title, W - 80, tSize, 14, "800", stack), vtw = ctx.measureText(vt).width;
+      mv(ctx, "titre", W / 2 - vtw / 2, 196 - tSize * 0.9, vtw, tSize * 1.15, function(){ ctx.fillStyle = "#FFFFFF"; ctx.fillText(vt, W / 2, 196); });
+      var ve = fit(ctx, ((school && school.nom) || "").toUpperCase(), W - 80, eSize, 10, "700", stack), vew = ctx.measureText(ve).width;
+      mv(ctx, "ecole", W / 2 - vew / 2, 226 - eSize * 0.9, vew, eSize * 1.15, function(){ ctx.fillStyle = tpl.secondary; ctx.fillText(ve, W / 2, 226); });
       drawFlag(ctx, W - 48 - 78, 52, 78, 52);
     } else {
-      ctx.textAlign = "center";
       ctx.fillStyle = "rgba(255,255,255,.88)";
-      var m1 = fit(ctx, minis, 700, 14, 9, "600", stack); ctx.fillText(m1, 500, 30);
-      ctx.fillStyle = "#FFFFFF";
-      var t2 = fit(ctx, title, 700, 42, 18, "800", stack); ctx.fillText(t2, 500, 82);
-      ctx.fillStyle = tpl.secondary;
-      var s2 = fit(ctx, ((school && school.nom) || "").toUpperCase(), 700, 26, 13, "700", stack); ctx.fillText(s2, 500, 122);
+      ctx.fillText(fit(ctx, minis, 700, 14, 9, "600", stack), 500, 30);
+      var ht = fit(ctx, title, 680, tSize, 14, "800", stack), htw = ctx.measureText(ht).width;
+      mv(ctx, "titre", 500 - htw / 2, 82 - tSize * 0.9, htw, tSize * 1.15, function(){ ctx.fillStyle = "#FFFFFF"; ctx.fillText(ht, 500, 82); });
+      var he = fit(ctx, ((school && school.nom) || "").toUpperCase(), 680, eSize, 10, "700", stack), hew = ctx.measureText(he).width;
+      mv(ctx, "ecole", 500 - hew / 2, 124 - eSize * 0.9, hew, eSize * 1.15, function(){ ctx.fillStyle = tpl.secondary; ctx.fillText(he, 500, 124); });
       drawFlag(ctx, W - 48 - 96, 36, 96, 64);
     }
     ctx.textAlign = "left";
@@ -812,42 +835,89 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
 
   /* -------------------------------- RECTO ---------------------------------- */
   async function drawRecto(ctx, W, H, stu, tpl, school, stack, vertical){
+    var sc = scaleGetter();
     var imgs = await Promise.all([safeImg(stu.photo), safeImg(school && school.logo)]);
     var photo = imgs[0], logo = imgs[1];
     drawDecor(ctx, W, H, tpl, vertical);
-    drawHeader(ctx, W, vertical ? 246 : 150, tpl, stack, school, logo, cardTitle(), vertical);
+    drawHeader(ctx, W, vertical ? 246 : 150, tpl, stack, school, logo, cardTitle(), vertical, sc);
     var annee = stu.anneeScolaire || (school && school.anneeScolaire) || "";
-    var footL = "N° " + (stu.numCarte || stu.matricule || "");
-    var footR = annee ? ("Année scolaire " + annee) : "";
-    drawFooter(ctx, W, H, tpl, stack, footL, footR);
+    drawFooter(ctx, W, H, tpl, stack, "N° " + (stu.numCarte || stu.matricule || ""), annee ? ("Année scolaire " + annee) : "");
     var qr = qrText(stu, school);
-    var nom = (stu.nom || "").toUpperCase(), prenom = stu.prenom || "";
-    var section = stu.classe || "";
+    var nom = (stu.nom || "").toUpperCase(), prenom = stu.prenom || "", section = stu.classe || "";
+    var gap = 12;
 
     if (!vertical){
-      drawPhotoBox(ctx, photo, 52, 186, 262, 350, tpl);
-      var x = 350;
-      drawLabelValue(ctx, "Nom", nom, x, 204, 610, tpl, stack, 40, ACCENTS[0]);
-      drawLabelValue(ctx, "Prénom(s)", prenom, x, 276, 610, tpl, stack, 34, ACCENTS[1]);
-      if (section) drawPill(ctx, section, x, 346, 50, tpl, stack, 26, "left", 380);
-      drawLabelValue(ctx, "Né(e) le", fmtDate(stu.dateNaissance), x, 424, 230, tpl, stack, 26, ACCENTS[2]);
-      drawLabelValue(ctx, "Sexe", sexeLabel(stu.sexe), x + 250, 424, 190, tpl, stack, 26, ACCENTS[3]);
-      drawLabelValue(ctx, "Lieu de naissance", stu.lieuNaissance, x, 488, 440, tpl, stack, 26, ACCENTS[4]);
-      drawQRBox(ctx, qr, W - 52 - 138, 410, 138, tpl);
+      var pk = sc("photo"), pw = 262 * pk, ph = 350 * pk;
+      if (ph > 392){ pw *= 392 / ph; ph = 392; }
+      if (pw < 60){ ph *= 60 / pw; pw = 60; }
+      mv(ctx, "photo", 45, 179, pw + 14, ph + 14, function(){ drawPhotoBox(ctx, photo, 52, 186, pw, ph, tpl); });
+      var x = Math.max(350, 52 + pw + 38);
+      var S = Math.max(60, Math.min(138 * sc("qr"), 210));
+      var qx = W - 52 - S, qy = 548 - S;
+      mv(ctx, "qr", qx - 10, qy - 10, S + 20, S + 20, function(){ drawQRBox(ctx, qr, qx, qy, S, tpl); });
+      var avail = function(yy, hh){ return (yy + hh > qy - 14 && yy < qy + S + 14) ? Math.max(120, qx - 26 - x) : (W - 52 - x); };
+      var y = 190;
+      function lv(label, value, key, vSize, accent, xx, maxW){
+        var k = sc(key), hh = (28 + vSize) * k;
+        setFont(ctx, "700", vSize, stack);
+        var wv = Math.min(maxW, Math.max(ctx.measureText(value || "—").width * k, 110 * k)), yy0 = y;
+        mv(ctx, key, xx, yy0, wv, hh, function(){
+          ctx.translate(xx, yy0); ctx.scale(k, k);
+          drawLabelValue(ctx, label, value, 0, 14, maxW / k, tpl, stack, vSize, accent);
+        });
+        return hh;
+      }
+      var h1 = (28 + 40) * sc("nom");   lv("Nom", nom, "nom", 40, ACCENTS[0], x, avail(y, h1));   y += h1 + gap;
+      var h2 = (28 + 34) * sc("prenom"); lv("Prénom(s)", prenom, "prenom", 34, ACCENTS[1], x, avail(y, h2)); y += h2 + gap;
+      if (section){
+        var k3 = sc("section"), h3 = 50 * k3;
+        (function(py){ mv(ctx, "section", x, py, 200, h3, function(){ return { w: drawPill(ctx, section, x, py, h3, tpl, stack, 26 * k3, "left", Math.min(400, avail(py, h3))) }; }); })(y);
+        y += h3 + gap;
+      }
+      var hN = (28 + 26) * sc("naissance"), hS = (28 + 26) * sc("sexe"), hr = Math.max(hN, hS);
+      var colW = avail(y, hr);
+      lv("Né(e) le", fmtDate(stu.dateNaissance), "naissance", 26, ACCENTS[2], x, Math.min(230, colW));
+      if (colW > 300) lv("Sexe", sexeLabel(stu.sexe), "sexe", 26, ACCENTS[3], x + 250, colW - 250);
+      y += hr + gap;
+      var hL = (28 + 26) * sc("lieu");
+      lv("Lieu de naissance", stu.lieuNaissance, "lieu", 26, ACCENTS[4], x, avail(y, hL));
     } else {
-      drawPhotoBox(ctx, photo, (W - 270) / 2, 276, 270, 340, tpl);
-      ctx.textAlign = "center";
-      ctx.fillStyle = tpl.text;
-      var n1 = fit(ctx, nom, W - 80, 40, 18, "800", stack); ctx.fillText(n1, W / 2, 672);
-      var n2 = fit(ctx, prenom, W - 80, 32, 16, "700", stack); ctx.fillText(n2, W / 2, 714);
-      if (section) drawPill(ctx, section, W / 2, 734, 48, tpl, stack, 26, "center", 400);
-      ctx.fillStyle = tpl.text; ctx.textAlign = "center";
-      var l1 = fit(ctx, "Né(e) le " + fmtDate(stu.dateNaissance) + (sexeLabel(stu.sexe) ? "  ·  " + sexeLabel(stu.sexe) : ""), W - 80, 24, 12, "600", stack);
-      ctx.fillText(l1, W / 2, 818);
-      var l2 = fit(ctx, stu.lieuNaissance ? ("à " + stu.lieuNaissance) : "", W - 80, 22, 12, "600", stack);
-      ctx.fillText(l2, W / 2, 848);
+      var pk2 = sc("photo"), pw2 = 270 * pk2, ph2 = 340 * pk2;
+      if (ph2 > 360){ pw2 *= 360 / ph2; ph2 = 360; }
+      if (pw2 < 60){ ph2 *= 60 / pw2; pw2 = 60; }
+      mv(ctx, "photo", (W - pw2) / 2 - 7, 269, pw2 + 14, ph2 + 14, function(){ drawPhotoBox(ctx, photo, (W - pw2) / 2, 276, pw2, ph2, tpl); });
+      var S2 = Math.max(56, Math.min(92 * sc("qr"), 130));
+      mv(ctx, "qr", (W - S2) / 2 - 10, 948 - S2, S2 + 20, S2 + 20, function(){ drawQRBox(ctx, qr, (W - S2) / 2, 958 - S2, S2, tpl); });
+      var yy = 276 + ph2 + 26;
+      ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+      var ns = 40 * sc("nom");
+      var vn = fit(ctx, nom, W - 80, ns, 14, "800", stack), vnw = ctx.measureText(vn).width, y1 = yy;
+      mv(ctx, "nom", W / 2 - vnw / 2, y1, vnw, ns * 1.1, function(){ ctx.fillStyle = tpl.text; ctx.fillText(vn, W / 2, y1 + ns * 0.8); }); yy += ns * 1.1 + 6;
+      var ps = 32 * sc("prenom");
+      var vp = fit(ctx, prenom, W - 80, ps, 14, "700", stack), vpw = ctx.measureText(vp).width, y2 = yy;
+      mv(ctx, "prenom", W / 2 - vpw / 2, y2, vpw, ps * 1.2, function(){ ctx.fillStyle = tpl.text; ctx.fillText(vp, W / 2, y2 + ps * 0.8); }); yy += ps * 1.25 + 6;
+      if (section){
+        var k4 = sc("section"), h4 = 48 * k4;
+        (function(py){ mv(ctx, "section", W / 2 - 100, py, 200, h4, function(){ var pw3 = drawPill(ctx, section, W / 2, py, h4, tpl, stack, 26 * k4, "center", 400); return { w: pw3, x: W / 2 - pw3 / 2 }; }); })(yy);
+        yy += h4 + 10;
+      }
+      var nsz = 24 * sc("naissance"), ssz = 24 * sc("sexe");
+      var tN = "Né(e) le " + fmtDate(stu.dateNaissance), tS = sexeLabel(stu.sexe);
+      setFont(ctx, "600", nsz, stack); var wN = ctx.measureText(tN).width;
+      setFont(ctx, "600", ssz, stack); var wS = tS ? ctx.measureText(tS).width : 0;
+      var total = wN + (tS ? 30 + wS : 0), sx = (W - total) / 2;
+      ctx.fillStyle = tpl.text; ctx.textAlign = "left";
+      var bl = yy + Math.max(nsz, ssz) * 0.85;
+      mv(ctx, "naissance", sx, bl - nsz * 0.85, wN, nsz * 1.15, function(){ setFont(ctx, "600", nsz, stack); ctx.fillText(tN, sx, bl); });
+      if (tS) mv(ctx, "sexe", sx + wN + 20, bl - ssz * 0.85, wS + 10, ssz * 1.15, function(){
+        ctx.fillStyle = ACCENTS[3]; ctx.beginPath(); ctx.arc(sx + wN + 15, bl - Math.max(nsz, ssz) * 0.3, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = tpl.text; setFont(ctx, "600", ssz, stack); ctx.fillText(tS, sx + wN + 30, bl); });
+      yy += Math.max(nsz, ssz) * 1.2 + 6;
+      var ls = 22 * sc("lieu");
+      ctx.textAlign = "center"; ctx.fillStyle = tpl.text;
+      if (stu.lieuNaissance){ var vl = fit(ctx, "à " + stu.lieuNaissance, W - 80, ls, 12, "600", stack), vlw = ctx.measureText(vl).width, y3 = yy;
+        mv(ctx, "lieu", W / 2 - vlw / 2, y3, vlw, ls * 1.1, function(){ ctx.fillText(vl, W / 2, y3 + ls * 0.85); }); }
       ctx.textAlign = "left";
-      drawQRBox(ctx, qr, (W - 92) / 2, 866, 92, tpl);
     }
   }
 
@@ -876,11 +946,11 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     var o = logoOpts();
     if (!o.on) return;
     var S = Math.min(W, H) * o.size / 100;
-    ctx.save();
-    ctx.globalAlpha = o.opacity / 100;
-    if (img) drawContain(ctx, img, (W - S) / 2, (H - S) / 2, S, S);
-    else { ctx.fillStyle = tpl.primary; starPath(ctx, W / 2, H / 2, S * 0.42, S * 0.17); ctx.fill(); }
-    ctx.restore();
+    mv(ctx, "logoCentre", (W - S) / 2, (H - S) / 2, S, S, function(){
+      ctx.globalAlpha = o.opacity / 100;
+      if (img) drawContain(ctx, img, (W - S) / 2, (H - S) / 2, S, S);
+      else { ctx.fillStyle = tpl.primary; starPath(ctx, W / 2, H / 2, S * 0.42, S * 0.17); ctx.fill(); }
+    });
   }
   function drawInfoCard(ctx, x, y, w, h, title, bar, titleColor, stack){
     ctx.save();
@@ -918,27 +988,27 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     return w;
   }
 
-  function buildVersoBlocks(ctx, stu, school, tpl, stack, o, imgs, bw){
+  function buildVersoBlocks(ctx, stu, school, tpl, stack, o, imgs, bw, sc){
     var blocks = [];
     var lienTxt = stu.lienParente ? (" (" + stu.lienParente + ")") : "";
     var allergies = (stu.allergies || "").trim(), blood = (stu.groupeSanguin || "").trim();
 
-    if (o.parent) blocks.push({ h: 108, draw: function(x, y, w){
+    if (o.parent) blocks.push({ key: "parent", h: 108, draw: function(x, y, w){
       drawInfoCard(ctx, x, y, w, 108, "Parent / Tuteur", "#4D96FF", "#2B63C0", stack);
       drawPerson(ctx, ((stu.parentNom || "") + lienTxt) || "—", stu.telParent, x + 28, y + 62, w - 44, tpl, stack, 24);
     }});
-    if (o.urgence) blocks.push({ h: 108, draw: function(x, y, w){
+    if (o.urgence) blocks.push({ key: "urgence", h: 108, draw: function(x, y, w){
       drawInfoCard(ctx, x, y, w, 108, "Personne à prévenir", "#FF6B6B", "#C73A3A", stack);
       drawPerson(ctx, stu.personneUrgence || "—", stu.telUrgence, x + 28, y + 62, w - 44, tpl, stack, 24);
     }});
-    if (o.autorises) blocks.push({ h: 176, draw: function(x, y, w){
+    if (o.autorises) blocks.push({ key: "autorises", h: 176, draw: function(x, y, w){
       drawInfoCard(ctx, x, y, w, 176, "Personnes autorisées à récupérer l'enfant", "#2EC4B6", "#0E7F76", stack);
       drawPerson(ctx, stu.autorise1 || "—", stu.autorise1Tel, x + 28, y + 70, w - 44, tpl, stack, 24, 1, "#2EC4B6");
       drawPerson(ctx, stu.autorise2 || "—", stu.autorise2Tel, x + 28, y + 134, w - 44, tpl, stack, 24, 2, "#FF8A00");
     }});
     if (o.sante && (blood || allergies)){
       var n = (blood ? 1 : 0) + (allergies ? 1 : 0);
-      blocks.push({ h: n * 36 + (n - 1) * 10, draw: function(x, y, w){
+      blocks.push({ key: "sante", h: n * 36 + (n - 1) * 10, draw: function(x, y, w){
         var yy = y;
         if (blood){ chip(ctx, "Groupe sanguin : " + blood, x, yy, stack, "#DCEBFF", "#1F4F99", w); yy += 46; }
         if (allergies) chip(ctx, "⚠ Allergies : " + allergies, x, yy, stack, "#FDE2E1", "#8A1C14", w);
@@ -948,14 +1018,14 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
       setFont(ctx, "600", 16, stack);
       var adr = [school.adresse, school.telephone].filter(Boolean).join(" · ");
       var msg = "Si cette carte est trouvée, merci de la rapporter à : " + (school.nom || "l'établissement") + (adr ? " — " + adr : "") + ".";
-      var lines = wrapLines(ctx, msg, bw - 20, 3);
-      blocks.push({ h: lines.length * 22 + 6, draw: function(x, y, w){
+      var lines = wrapLines(ctx, msg, (bw - 20) / sc("retour"), 3);
+      blocks.push({ key: "retour", h: lines.length * 22 + 6, draw: function(x, y, w){
         rrPath(ctx, x, y + 2, 5, lines.length * 22 - 2, 3); ctx.fillStyle = "#B15DFF"; ctx.fill();
         setFont(ctx, "600", 16, stack); ctx.fillStyle = withAlpha(tpl.text, 0.85); ctx.textAlign = "left";
         lines.forEach(function(ln, i){ ctx.fillText(ln, x + 16, y + 17 + i * 22); });
       }});
     }
-    if (o.signature) blocks.push({ h: 124, draw: function(x, y, w){
+    if (o.signature) blocks.push({ key: "signature", h: 124, draw: function(x, y, w){
       var cx = x + w / 2;
       setFont(ctx, "800", 14, stack); ctx.fillStyle = withAlpha(tpl.text, 0.75); ctx.textAlign = "center";
       ctx.fillText("LE DIRECTEUR / LA DIRECTRICE", cx, y + 16);
@@ -964,7 +1034,7 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
       if (school.directeur){ setFont(ctx, "700", 17, stack); ctx.fillStyle = tpl.text; ctx.fillText(fit(ctx, school.directeur, w - 20, 17, 11, "700", stack), cx, y + 118); }
       ctx.textAlign = "left";
     }});
-    if (o.delivrance && stu.dateDelivrance) blocks.push({ h: 24, draw: function(x, y, w){
+    if (o.delivrance && stu.dateDelivrance) blocks.push({ key: "delivrance", h: 24, draw: function(x, y, w){
       setFont(ctx, "600", 15, stack); ctx.fillStyle = withAlpha(tpl.text, 0.72); ctx.textAlign = "left";
       ctx.fillText("Délivrée le " + fmtDate(stu.dateDelivrance) + (stu.dateExpiration ? " · Expire le " + fmtDate(stu.dateExpiration) : ""), x, y + 16);
     }});
@@ -990,34 +1060,47 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     drawFooter(ctx, W, H, tpl, stack, school.telephone ? ("☎ " + school.telephone) : (school.email || ""), (stu.nom || "").toUpperCase() + " " + (stu.prenom || ""));
 
     var o = versoOpts();
+    var sc = scaleGetter();
     var top = hh + 30, limit = H - 46 - 12;
     var cols = vertical ? [{ x: 44, w: W - 88, items: [], h: 0 }] : [{ x: 40, w: 440, items: [], h: 0 }, { x: 506, w: 466, items: [], h: 0 }];
-    var blocks = buildVersoBlocks(ctx, stu, school, tpl, stack, o, imgs, cols[0].w);
+    var blocks = buildVersoBlocks(ctx, stu, school, tpl, stack, o, imgs, cols[0].w, sc);
     var gap0 = 12;
     blocks.forEach(function(b){
-      var best = null;
+      b.hs = b.h * sc(b.key);
+      var best = null, fallback = null;
       cols.forEach(function(c){
-        var need = c.h + (c.items.length ? gap0 : 0) + b.h;
+        var need = c.h + (c.items.length ? gap0 : 0) + b.hs;
+        if (!fallback || c.h < fallback.h) fallback = c;
         if (top + need <= limit && (!best || c.h < best.h)) best = c;
       });
-      if (best){ best.h += (best.items.length ? gap0 : 0) + b.h; best.items.push(b); }
+      best = best || fallback;
+      best.h += (best.items.length ? gap0 : 0) + b.hs; best.items.push(b);
     });
     cols.forEach(function(c){
-      var sum = c.items.reduce(function(a, b){ return a + b.h; }, 0);
+      var sum = c.items.reduce(function(a, b){ return a + b.hs; }, 0);
       var gap = c.items.length > 1 ? Math.max(gap0, Math.min(28, (limit - top - sum) / (c.items.length - 1))) : 0;
       var y = top;
-      c.items.forEach(function(b){ b.draw(c.x, y, c.w); y += b.h + gap; });
+      c.items.forEach(function(b){
+        var k = sc(b.key);
+        var d = ctx.__pos ? ctx.__pos(b.key) : { x: 0, y: 0 };
+        ctx.save(); ctx.translate(c.x + d.x, y + d.y); ctx.scale(k, k); b.draw(0, 0, c.w / k); ctx.restore();
+        if (ctx.__hits) ctx.__hits.push({ key: b.key, x: c.x + d.x, y: y + d.y, w: c.w, h: b.hs });
+        y += b.hs + gap;
+      });
     });
   }
 
   /* -------------------------- point d'entrée du rendu ---------------------- */
-  async function renderPreschoolCard(canvas, stu, tpl, side, school){
+  async function renderPreschoolCard(canvas, stu, tpl, side, school, hitsOut){
     tpl = tpl || PRESCHOOL_TEMPLATES[0];
     var vertical = tpl.orientation === "vertical";
     var W = vertical ? CARD_H : CARD_W, H = vertical ? CARD_W : CARD_H;
     canvas.width = W; canvas.height = H;
     var ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, W, H);
+    ctx.__pos = posGetter(vertical);
+    if (hitsOut) hitsOut.length = 0;
+    ctx.__hits = hitsOut || null;
     var stack = (typeof fontStackFor === "function") ? fontStackFor("sans") : "Segoe UI, Arial, sans-serif";
     ctx.save();
     rrPath(ctx, 0, 0, W, H, (tpl.radius || 14) * 2.2); ctx.clip();
@@ -1147,15 +1230,183 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     return _origSave.apply(this, arguments);
   };
 
-  function refreshPreview(){
-    var cv = document.getElementById("pre_prev");
-    if (!cv) return;
-    var sample = { nom: "OUEDRAOGO", prenom: "Aminata", classe: "Petite section", sexe: "F", dateNaissance: "2022-03-14",
-      telParent: "70 12 34 56", personneUrgence: "Awa Ouedraogo", telUrgence: "76 00 11 22", parentNom: "Issa Ouedraogo", lienParente: "Père",
-      autorise1: "Awa (tante)", autorise1Tel: "76 00 11 22", autorise2: "Moussa (oncle)", autorise2Tel: "78 55 44 33",
-      groupeSanguin: "O+", allergies: "Arachide", numCarte: "CEEP-2026-0001", prescolaire: true };
-    var tpls = (DB.get(DB.KEYS.templates) || []).filter(function(t){ return t.id === "eveil-soleil"; });
-    renderPreschoolCard(cv, sample, tpls[0] || PRESCHOOL_TEMPLATES[0], "verso", DB.get(DB.KEYS.school) || {});
+  var editor = { sel: null, hitsR: [], hitsV: [], busy: false, again: false, big: false };
+  function oriKey(){ var el = document.getElementById("pre_prevOri"); return (el && el.value === "vertical") ? "v" : "h"; }
+  function getPos(key){
+    var all = (getSettings().preschoolPos) || {}, d = (all[oriKey()] || {})[key];
+    return d ? { x: +d.x || 0, y: +d.y || 0 } : { x: 0, y: 0 };
+  }
+  function setPos(key, x, y){
+    var st = getSettings(); st.preschoolPos = st.preschoolPos || {};
+    var o = oriKey(); st.preschoolPos[o] = st.preschoolPos[o] || {};
+    if (!Math.round(x) && !Math.round(y)) delete st.preschoolPos[o][key];
+    else st.preschoolPos[o][key] = { x: Math.round(x), y: Math.round(y) };
+    setSettings(st);
+  }
+  function elName(key){
+    var all = SCALE_RECTO.concat(VERSO_KEYS, [["logoCentre", "Logo central (verso)"]]);
+    for (var i = 0; i < all.length; i++) if (all[i][0] === key) return all[i][1];
+    return key;
+  }
+  function overlay(cv, hits){
+    if (!editor.sel) return;
+    for (var i = 0; i < hits.length; i++){
+      if (hits[i].key === editor.sel){
+        var c = cv.getContext("2d"), h = hits[i];
+        c.save(); c.setLineDash([10, 7]); c.lineWidth = 4; c.strokeStyle = "#E11D48";
+        c.strokeRect(h.x - 5, h.y - 5, h.w + 10, h.h + 10); c.restore();
+        return;
+      }
+    }
+  }
+  function updateSelBar(){
+    var n = document.getElementById("pre_selname");
+    if (n) n.textContent = editor.sel ? elName(editor.sel) : "touchez un élément de la carte";
+  }
+  async function refreshPreview(){
+    var cR = document.getElementById("pre_prevR"), cV = document.getElementById("pre_prevV");
+    if (!cR || !cV) return;
+    if (editor.busy){ editor.again = true; return; }
+    editor.busy = true;
+    try {
+      var oriEl = document.getElementById("pre_prevOri");
+      var ori = oriEl ? oriEl.value : "horizontal";
+      var sample = { nom: "OUEDRAOGO", prenom: "Aminata", classe: "Petite section", sexe: "F", dateNaissance: "2022-03-14", lieuNaissance: "Ouagadougou",
+        telParent: "70 12 34 56", personneUrgence: "Awa Ouedraogo", telUrgence: "76 00 11 22", parentNom: "Issa Ouedraogo", lienParente: "Père",
+        autorise1: "Awa (tante)", autorise1Tel: "76 00 11 22", autorise2: "Moussa (oncle)", autorise2Tel: "78 55 44 33",
+        groupeSanguin: "O+", allergies: "Arachide", numCarte: "CEEP-2026-0001", anneeScolaire: "2026-2027", dateDelivrance: "2026-11-16", prescolaire: true };
+      var id = ori === "vertical" ? "eveil-vertical" : "eveil-soleil";
+      var tpl = (DB.get(DB.KEYS.templates) || []).filter(function(t){ return t.id === id; })[0] || PRESCHOOL_TEMPLATES[0];
+      var school = DB.get(DB.KEYS.school) || {};
+      await Promise.all([
+        renderPreschoolCard(cR, sample, tpl, "recto", school, editor.hitsR),
+        renderPreschoolCard(cV, sample, tpl, "verso", school, editor.hitsV)
+      ]);
+      overlay(cR, editor.hitsR); overlay(cV, editor.hitsV);
+    } finally {
+      editor.busy = false;
+      if (editor.again){ editor.again = false; refreshPreview(); }
+    }
+  }
+
+  function bindDrag(cv, face){
+    cv.style.touchAction = "none"; cv.style.cursor = "grab";
+    var drag = null;
+    function toCard(e){
+      var r = cv.getBoundingClientRect();
+      return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height };
+    }
+    cv.addEventListener("pointerdown", function(e){
+      var p = toCard(e), hits = face === "recto" ? editor.hitsR : editor.hitsV;
+      for (var i = hits.length - 1; i >= 0; i--){
+        var h = hits[i];
+        if (p.x >= h.x && p.x <= h.x + h.w && p.y >= h.y && p.y <= h.y + h.h){
+          editor.sel = h.key; var o = getPos(h.key);
+          drag = { key: h.key, sx: p.x, sy: p.y, ox: o.x, oy: o.y, moved: false };
+          try { cv.setPointerCapture(e.pointerId); } catch(_){}
+          e.preventDefault(); updateSelBar(); refreshPreview();
+          return;
+        }
+      }
+      editor.sel = null; updateSelBar(); refreshPreview();
+    });
+    cv.addEventListener("pointermove", function(e){
+      if (!drag) return;
+      var p = toCard(e);
+      drag.moved = true;
+      setPos(drag.key, drag.ox + p.x - drag.sx, drag.oy + p.y - drag.sy);
+      refreshPreview();
+    });
+    function end(){ if (drag && drag.moved) toast("Position enregistrée"); drag = null; }
+    cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
+  }
+
+  function applyBig(){
+    var prev = document.getElementById("pre_prevBox"), wrap = document.getElementById("pre_prevWrap");
+    if (!prev || !wrap) return;
+    prev.style.position = editor.big ? "static" : "sticky";
+    wrap.style.flexDirection = editor.big ? "column" : "row";
+    ["pre_prevR", "pre_prevV"].forEach(function(id){
+      var c = document.getElementById(id);
+      c.style.maxWidth = editor.big ? "100%" : "48%";
+      c.style.maxHeight = editor.big ? "none" : "230px";
+      c.style.width = editor.big ? "100%" : "auto";
+    });
+    var b = document.getElementById("btnPreBig"); if (b) b.textContent = editor.big ? "Réduire l'aperçu" : "Agrandir l'aperçu";
+  }
+
+  function buildScaleUI(card){
+    var old = document.getElementById("pre_prev");
+    if (old){ if (old.previousElementSibling) old.previousElementSibling.remove(); old.remove(); }
+    var btnRow = document.getElementById("btnPreAddSections").parentNode;
+    var prev = document.createElement("div");
+    prev.id = "pre_prevBox";
+    prev.style.cssText = "position:sticky;top:0;z-index:5;margin:14px -4px 6px;padding:8px 4px;background:var(--surface, #fff);border-bottom:1px solid rgba(128,128,128,.3);";
+    var cs = "width:auto;height:auto;max-width:48%;max-height:230px;flex:0 0 auto;border-radius:10px;border:1px solid rgba(128,128,128,.35);background:#fff;";
+    prev.innerHTML = "<div style=\"display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;font-size:12px;color:var(--ink-soft);\">Aperçu en direct :"
+      + "<select id=\"pre_prevOri\" style=\"width:auto;padding:4px 8px;\"><option value=\"horizontal\">Carte horizontale</option><option value=\"vertical\">Carte verticale</option></select>"
+      + "<button class=\"btn secondary\" id=\"btnPreBig\" type=\"button\" style=\"padding:4px 10px;\">Agrandir l'aperçu</button></div>"
+      + "<div id=\"pre_prevWrap\" style=\"display:flex;gap:8px;align-items:flex-start;\"><canvas id=\"pre_prevR\" style=\"" + cs + "\"></canvas><canvas id=\"pre_prevV\" style=\"" + cs + "\"></canvas></div>"
+      + "<div style=\"display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;font-size:12px;\">"
+      + "<span>Élément : <b id=\"pre_selname\">touchez un élément de la carte</b></span>"
+      + "<button class=\"btn secondary\" type=\"button\" data-mv=\"-4,0\" style=\"padding:4px 10px;\">←</button>"
+      + "<button class=\"btn secondary\" type=\"button\" data-mv=\"4,0\" style=\"padding:4px 10px;\">→</button>"
+      + "<button class=\"btn secondary\" type=\"button\" data-mv=\"0,-4\" style=\"padding:4px 10px;\">↑</button>"
+      + "<button class=\"btn secondary\" type=\"button\" data-mv=\"0,4\" style=\"padding:4px 10px;\">↓</button>"
+      + "<button class=\"btn secondary\" type=\"button\" data-mv=\"reset\" style=\"padding:4px 10px;\">Remettre en place</button></div>"
+      + "<div style=\"font-size:11.5px;color:var(--ink-soft);margin-top:4px;\">Glissez un élément avec le doigt ou la souris pour le déplacer, ou touchez-le puis utilisez les flèches.</div>";
+    btnRow.parentNode.insertBefore(prev, btnRow.nextSibling);
+    document.getElementById("pre_prevOri").addEventListener("change", function(){ editor.sel = null; updateSelBar(); refreshPreview(); });
+    document.getElementById("btnPreBig").addEventListener("click", function(){ editor.big = !editor.big; applyBig(); });
+    bindDrag(document.getElementById("pre_prevR"), "recto");
+    bindDrag(document.getElementById("pre_prevV"), "verso");
+    prev.querySelectorAll("button[data-mv]").forEach(function(b){
+      b.addEventListener("click", function(){
+        if (!editor.sel){ toast("Touchez d'abord un élément de la carte"); return; }
+        var v = b.getAttribute("data-mv"), o = getPos(editor.sel);
+        if (v === "reset") setPos(editor.sel, 0, 0);
+        else { var a = v.split(","); setPos(editor.sel, o.x + (+a[0]), o.y + (+a[1])); }
+        refreshPreview();
+      });
+    });
+
+    var box = document.createElement("div");
+    box.style.marginTop = "18px";
+    var h = "<div style=\"font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;\">Taille de chaque information (agrandir / réduire)</div>"
+      + "<p style=\"margin:2px 0 8px;font-size:12px;color:var(--ink-soft);\">100 % = taille normale. Chaque curseur agit seulement sur son élément ; les autres se replacent automatiquement. Si la carte déborde, réduisez un élément.</p>";
+    function group(title, list){
+      var g = "<div style=\"margin:12px 0 4px;font-weight:700;font-size:13px;\">" + title + "</div><div class=\"grid cols-2\">";
+      list.forEach(function(k){
+        g += "<div class=\"field\"><label>" + k[1] + " : <b><span data-sv=\"" + k[0] + "\">100</span> %</b></label><input type=\"range\" data-sc=\"" + k[0] + "\" min=\"50\" max=\"200\" step=\"5\" value=\"100\"></div>";
+      });
+      return g + "</div>";
+    }
+    h += group("Recto", SCALE_RECTO) + group("Verso", VERSO_KEYS);
+    h += "<div style=\"display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;\"><button class=\"btn secondary\" id=\"btnPreResetScale\" type=\"button\">Rétablir les tailles normales (100 %)</button>"
+      + "<button class=\"btn secondary\" id=\"btnPreResetPos\" type=\"button\">Rétablir toutes les positions</button></div>";
+    box.innerHTML = h;
+    card.appendChild(box);
+    var cur = (getSettings().preschoolScale) || {};
+    box.querySelectorAll("input[data-sc]").forEach(function(r){
+      var k = r.getAttribute("data-sc"), v = +cur[k]; if (!(v >= 30)) v = 100;
+      r.value = v; box.querySelector("[data-sv=\"" + k + "\"]").textContent = v;
+      r.addEventListener("input", function(){
+        var st = getSettings(); st.preschoolScale = st.preschoolScale || {};
+        st.preschoolScale[k] = +r.value; setSettings(st);
+        box.querySelector("[data-sv=\"" + k + "\"]").textContent = r.value;
+        refreshPreview();
+      });
+      r.addEventListener("change", function(){ toast("Taille mise à jour"); });
+    });
+    document.getElementById("btnPreResetScale").addEventListener("click", function(){
+      var st = getSettings(); st.preschoolScale = {}; setSettings(st);
+      box.querySelectorAll("input[data-sc]").forEach(function(r){ r.value = 100; box.querySelector("[data-sv=\"" + r.getAttribute("data-sc") + "\"]").textContent = 100; });
+      refreshPreview(); toast("Tailles rétablies");
+    });
+    document.getElementById("btnPreResetPos").addEventListener("click", function(){
+      var st = getSettings(); st.preschoolPos = {}; setSettings(st);
+      refreshPreview(); toast("Positions rétablies");
+    });
   }
 
   /* --------------------------- page Paramètres ----------------------------- */
@@ -1198,7 +1449,9 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
         el.addEventListener("input", saveLogo);
         el.addEventListener("change", function(){ saveLogo(); toast("Logo du verso mis à jour"); });
       });
-      syncLabels(); refreshPreview();
+      syncLabels();
+      buildScaleUI(card);
+      refreshPreview();
       card.querySelectorAll("input[data-vk]").forEach(function(cb){
         cb.addEventListener("change", function(){
           var s2 = getSettings(); s2.preschoolVerso = s2.preschoolVerso || {};
