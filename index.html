@@ -866,9 +866,25 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     VERSO_KEYS.forEach(function(k){ o[k[0]] = s[k[0]] !== false; });
     return o;
   }
+  function logoOpts(){
+    var o = (getSettings().preschoolLogo) || {};
+    var size = +o.size; if (!(size >= 5)) size = 55; if (size > 200) size = 200;
+    var op = (o.opacity == null) ? 20 : +o.opacity; if (!(op >= 3)) op = 20; if (op > 100) op = 100;
+    return { on: o.on !== false, size: size, opacity: op };
+  }
+  function drawCenterLogo(ctx, W, H, img, tpl){
+    var o = logoOpts();
+    if (!o.on) return;
+    var S = Math.min(W, H) * o.size / 100;
+    ctx.save();
+    ctx.globalAlpha = o.opacity / 100;
+    if (img) drawContain(ctx, img, (W - S) / 2, (H - S) / 2, S, S);
+    else { ctx.fillStyle = tpl.primary; starPath(ctx, W / 2, H / 2, S * 0.42, S * 0.17); ctx.fill(); }
+    ctx.restore();
+  }
   function drawInfoCard(ctx, x, y, w, h, title, bar, titleColor, stack){
     ctx.save();
-    rrPath(ctx, x, y, w, h, 18); ctx.fillStyle = "#FFFFFF"; ctx.fill();
+    rrPath(ctx, x, y, w, h, 18); ctx.fillStyle = "rgba(255,255,255,0.86)"; ctx.fill();
     ctx.lineWidth = 2.5; ctx.strokeStyle = withAlpha(bar, 0.55); ctx.stroke();
     rrPath(ctx, x, y, 12, h, 6); ctx.fillStyle = bar; ctx.fill();
     ctx.restore();
@@ -959,6 +975,7 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     var im = await Promise.all([safeImg(school.logo), safeImg(school.directeurSignature), safeImg(school.cachet)]);
     var imgs = { logo: im[0], sign: im[1], cachet: im[2] };
     drawDecor(ctx, W, H, tpl, vertical);
+    drawCenterLogo(ctx, W, H, imgs.logo, tpl);
     var hh = vertical ? 124 : 96;
     drawWaveBand(ctx, W, hh, tpl.secondary, 6, 200);
     drawWaveBand(ctx, W, hh - 8, tpl.primary, 6, 200);
@@ -1130,6 +1147,17 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     return _origSave.apply(this, arguments);
   };
 
+  function refreshPreview(){
+    var cv = document.getElementById("pre_prev");
+    if (!cv) return;
+    var sample = { nom: "OUEDRAOGO", prenom: "Aminata", classe: "Petite section", sexe: "F", dateNaissance: "2022-03-14",
+      telParent: "70 12 34 56", personneUrgence: "Awa Ouedraogo", telUrgence: "76 00 11 22", parentNom: "Issa Ouedraogo", lienParente: "Père",
+      autorise1: "Awa (tante)", autorise1Tel: "76 00 11 22", autorise2: "Moussa (oncle)", autorise2Tel: "78 55 44 33",
+      groupeSanguin: "O+", allergies: "Arachide", numCarte: "CEEP-2026-0001", prescolaire: true };
+    var tpls = (DB.get(DB.KEYS.templates) || []).filter(function(t){ return t.id === "eveil-soleil"; });
+    renderPreschoolCard(cv, sample, tpls[0] || PRESCHOOL_TEMPLATES[0], "verso", DB.get(DB.KEYS.school) || {});
+  }
+
   /* --------------------------- page Paramètres ----------------------------- */
   var _origSettings = renderSettings;
   renderSettings = function(container){
@@ -1149,13 +1177,33 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
         + "<div style=\"margin-top:16px;\"><div style=\"font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;\">Rubriques affichées au verso de la carte</div>"
         + "<p style=\"margin:2px 0 8px;font-size:12px;color:var(--ink-soft);\">Décochez une rubrique pour la supprimer du verso : les autres se réorganisent automatiquement.</p>"
         + VERSO_KEYS.map(function(k){ var on = ((st.preschoolVerso || {})[k[0]] !== false); return "<label class=\"checklistItem\"><input type=\"checkbox\" data-vk=\"" + k[0] + "\"" + (on ? " checked" : "") + "> " + k[1] + "</label>"; }).join("")
-        + "</div>";
+        + "</div>"
+        + "<div style=\"margin-top:18px;\"><div style=\"font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;\">Logo au centre du verso</div>"
+        + "<label class=\"checklistItem\"><input type=\"checkbox\" id=\"pre_logoOn\"> Afficher le logo de l'établissement au centre du verso</label>"
+        + "<div class=\"field\"><label for=\"pre_logoSize\">Taille du logo : <b><span id=\"pre_logoSizeV\"></span> %</b></label><input id=\"pre_logoSize\" type=\"range\" min=\"10\" max=\"200\" step=\"5\"></div>"
+        + "<div class=\"field\"><label for=\"pre_logoOp\">Visibilité du logo : <b><span id=\"pre_logoOpV\"></span> %</b></label><input id=\"pre_logoOp\" type=\"range\" min=\"5\" max=\"100\" step=\"5\"></div>"
+        + "<div style=\"font-size:12px;color:var(--ink-soft);margin:4px 0 8px;\">Aperçu du verso (se met à jour en direct) :</div>"
+        + "<canvas id=\"pre_prev\" style=\"width:100%;max-width:480px;border-radius:14px;border:1px solid rgba(128,128,128,.35);\"></canvas></div>";
       container.appendChild(card);
+      var lo = logoOpts();
+      var elOn = document.getElementById("pre_logoOn"), elSz = document.getElementById("pre_logoSize"), elOp = document.getElementById("pre_logoOp");
+      elOn.checked = lo.on; elSz.value = lo.size; elOp.value = lo.opacity;
+      function syncLabels(){ document.getElementById("pre_logoSizeV").textContent = elSz.value; document.getElementById("pre_logoOpV").textContent = elOp.value; }
+      function saveLogo(){
+        var s3 = getSettings();
+        s3.preschoolLogo = { on: elOn.checked, size: +elSz.value, opacity: +elOp.value };
+        setSettings(s3); syncLabels(); refreshPreview();
+      }
+      [elOn, elSz, elOp].forEach(function(el){
+        el.addEventListener("input", saveLogo);
+        el.addEventListener("change", function(){ saveLogo(); toast("Logo du verso mis à jour"); });
+      });
+      syncLabels(); refreshPreview();
       card.querySelectorAll("input[data-vk]").forEach(function(cb){
         cb.addEventListener("change", function(){
           var s2 = getSettings(); s2.preschoolVerso = s2.preschoolVerso || {};
           s2.preschoolVerso[cb.getAttribute("data-vk")] = cb.checked;
-          setSettings(s2); toast("Verso mis à jour");
+          setSettings(s2); toast("Verso mis à jour"); refreshPreview();
         });
       });
       document.getElementById("btnPreSaveTitle").addEventListener("click", function(){
