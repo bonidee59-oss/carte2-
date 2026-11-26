@@ -1483,6 +1483,170 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     return _origOpenModal.apply(this, arguments);
   };
 
+  /* ------- Photos d'identité : défilement + glisser-déposer ------- */
+  function psNorm(s){ return String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g," ").trim(); }
+  function psAsk(file){
+    return new Promise(function(res){ var r=new FileReader(); r.onload=function(){res(r.result);}; r.readAsDataURL(file); });
+  }
+  function psCrop(dataUrl){
+    return new Promise(function(res){
+      var im=new Image(); im.onload=function(){
+        var W=270,H=360,c=document.createElement("canvas"); c.width=W; c.height=H;
+        var x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,W,H);
+        var k=Math.max(W/im.width,H/im.height), w=im.width*k, h=im.height*k;
+        x.drawImage(im,(W-w)/2,(H-h)*0.35,w,h); res(c.toDataURL("image/jpeg",0.9));
+      }; im.onerror=function(){res(null);}; im.src=dataUrl;
+    });
+  }
+  function psSetPhoto(id, photo){
+    var list=currentStudents().map(function(s){ return s.id===id?Object.assign({},s,{photo:photo}):s; });
+    saveStudents(list);
+    try{ logHistory("photo identité", id); }catch(e){}
+  }
+  function psCurrent(){
+    var sel=document.getElementById("ps_student"), c=document.getElementById("ps_current"); if(!sel||!c||!sel.value) return;
+    var s=currentStudents().filter(function(x){return x.id===sel.value;})[0];
+    if(s && s.photo) c.innerHTML="<img src=\""+s.photo+"\" style=\"width:100%;height:100%;object-fit:cover\">";
+  }
+  function psRefresh(){
+    var sel=document.getElementById("ps_student"); if(!sel) return;
+    sel.dispatchEvent(new Event("change",{bubbles:true}));
+    setTimeout(psCurrent,0); psStrip(true);
+  }
+  function psIsImg(f){ return f && /^image\//.test(f.type||"") ; }
+  async function psHandleFiles(files, targetId){
+    files=[].filter.call(files,psIsImg);
+    if(!files.length){ try{toast("Déposez un fichier image (JPG, PNG…)");}catch(e){} return; }
+    var sel=document.getElementById("ps_student"); if(!sel) return;
+    var id=targetId||sel.value;
+    if(targetId){ sel.value=targetId; sel.dispatchEvent(new Event("change",{bubbles:true})); }
+    if(files.length===1){
+      if(!id){ try{toast("Choisissez d'abord un élève");}catch(e){} return; }
+      var url=await psAsk(files[0]);
+      openPhotoEditor(url,function(photo){ psSetPhoto(id,photo); psRefresh(); try{toast("Photo appliquée");}catch(e){} });
+      return;
+    }
+    var studs=[].slice.call(sel.options).filter(function(o){return o.value;}).map(function(o){ return o.value; });
+    var all=currentStudents(), byId={}; all.forEach(function(s){byId[s.id]=s;});
+    var used={}, done=0, byName=0, rest=[];
+    for(var i=0;i<files.length;i++){
+      var base=psNorm(files[i].name.replace(/\.[^.]+$/,"")), toks=base.split(" "), found=null;
+      studs.forEach(function(sid){ if(found||used[sid]) return; var s=byId[sid]; if(!s) return;
+        var m=psNorm(s.matricule), n=psNorm(s.nom), p=psNorm(s.prenom);
+        if((m && toks.indexOf(m)>=0) || (n && p && base.indexOf(n)>=0 && base.indexOf(p)>=0)) found=sid; });
+      if(found){ used[found]=1; var d=await psCrop(await psAsk(files[i])); if(d){ psSetPhoto(found,d); done++; byName++; } }
+      else rest.push(files[i]);
+    }
+    var start=Math.max(0,studs.indexOf(id)), order=studs.slice(start).concat(studs.slice(0,start)).filter(function(s){return !used[s];});
+    for(var j=0;j<rest.length && j<order.length;j++){
+      used[order[j]]=1; var d2=await psCrop(await psAsk(rest[j])); if(d2){ psSetPhoto(order[j],d2); done++; }
+    }
+    psRefresh();
+    try{ toast(done+" photo(s) appliquée(s)"+(byName?" — "+byName+" reconnue(s) par le nom/matricule":"")+(rest.length>order.length?" — certaines non placées":"")); }catch(e){}
+  }
+  function psStrip(force){
+    var sel=document.getElementById("ps_student"), strip=document.getElementById("psStrip"); if(!sel||!strip) return;
+    var byId={}; currentStudents().forEach(function(s){byId[s.id]=s;});
+    var h="";
+    [].slice.call(sel.options).forEach(function(o){
+      if(!o.value) return; var s=byId[o.value]||{};
+      h+="<div class=\"psTile\" data-id=\""+o.value+"\" title=\"Cliquez pour choisir · déposez une photo ici\" style=\"flex:0 0 74px;text-align:center;cursor:pointer;border:2px solid "+(sel.value===o.value?"var(--primary,#1d6fb8)":"var(--line)")+";border-radius:10px;padding:4px;background:var(--surface,#fff);\">"
+        +"<div style=\"width:62px;height:82px;margin:0 auto;border-radius:6px;overflow:hidden;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--ink-soft);\">"
+        +(s.photo?"<img src=\""+s.photo+"\" style=\"width:100%;height:100%;object-fit:cover\">":"＋")+"</div>"
+        +"<div style=\"font-size:10.5px;line-height:1.2;margin-top:3px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;\">"+escapeHtml(s.prenom||"")+"</div></div>";
+    });
+    strip.innerHTML=h;
+    var cur=strip.querySelector(".psTile[style*='primary']"); if(cur && cur.scrollIntoView) cur.scrollIntoView({block:"nearest",inline:"center"});
+  }
+  function injectPhotoNav(){
+    var sel=document.getElementById("ps_student"); if(!sel) return;
+    var box=document.getElementById("psNavBox");
+    if(box){ if(box.previousElementSibling===sel){ return; } box.remove(); }
+    box=document.createElement("span"); box.id="psNavBox";
+    box.style.cssText="display:inline-flex;align-items:center;gap:6px;margin-left:8px;";
+    box.innerHTML="<button class=\"btn secondary\" id=\"psPrevBtn\" type=\"button\" title=\"Élève précédent (flèche gauche)\" style=\"padding:6px 12px;font-weight:700;\">← Précédent</button>"
+      +"<b id=\"psNavCount\" style=\"min-width:56px;text-align:center;\">– / –</b>"
+      +"<button class=\"btn secondary\" id=\"psNextBtn\" type=\"button\" title=\"Élève suivant (flèche droite)\" style=\"padding:6px 12px;font-weight:700;\">Suivant →</button>";
+    sel.insertAdjacentElement("afterend",box);
+    function upd(){ var c=document.getElementById("psNavCount"); if(!c) return; c.textContent=(sel.selectedIndex>=1?sel.selectedIndex:"–")+" / "+Math.max(0,sel.options.length-1); psCurrent(); psStrip(); }
+    document.getElementById("psPrevBtn").addEventListener("click",function(){ cardNavStep(-1,"ps_student"); });
+    document.getElementById("psNextBtn").addEventListener("click",function(){ cardNavStep(1,"ps_student"); });
+    sel.addEventListener("change",function(){ setTimeout(upd,0); });
+    // bande de vignettes (déposer une photo sur la carte d'un élève)
+    var zone=document.createElement("div"); zone.id="psDropZone";
+    zone.style.cssText="margin:12px 0;padding:12px;border:2px dashed var(--line);border-radius:12px;background:var(--surface-2);";
+    zone.innerHTML="<div id=\"psDropMsg\" style=\"text-align:center;font-weight:700;margin-bottom:4px;\">📥 Glissez-déposez vos photos ici</div>"
+      +"<div style=\"text-align:center;font-size:12px;color:var(--ink-soft);margin-bottom:10px;\">1 photo → s'applique à l'élève choisi (avec recadrage). Plusieurs photos → placées automatiquement (selon le nom/matricule du fichier, sinon à la suite). Vous pouvez aussi déposer une photo directement sur la vignette d'un élève.</div>"
+      +"<div id=\"psStrip\" style=\"display:flex;gap:8px;overflow-x:auto;padding:4px;\"></div>";
+    var grid=document.querySelector("#viewContainer .grid.cols-2"); if(grid) grid.insertAdjacentElement("beforebegin",zone); else box.parentElement.insertAdjacentElement("afterend",zone);
+    function hl(el,on){ el.style.borderColor=on?"var(--primary,#1d6fb8)":""; el.style.background=on?"rgba(29,111,184,.10)":""; }
+    ["dragenter","dragover"].forEach(function(ev){ zone.addEventListener(ev,function(e){ e.preventDefault(); var t=e.target.closest&&e.target.closest(".psTile"); if(!t) hl(zone,true); else t.style.outline="3px solid var(--primary,#1d6fb8)"; }); });
+    ["dragleave","drop"].forEach(function(ev){ zone.addEventListener(ev,function(e){ hl(zone,false); [].forEach.call(zone.querySelectorAll(".psTile"),function(t){t.style.outline="";}); }); });
+    zone.addEventListener("drop",function(e){ e.preventDefault(); var t=e.target.closest&&e.target.closest(".psTile"); var f=e.dataTransfer&&e.dataTransfer.files; if(f&&f.length) psHandleFiles(f,t?t.getAttribute("data-id"):null); });
+    zone.addEventListener("click",function(e){ var t=e.target.closest&&e.target.closest(".psTile"); if(!t) return; sel.value=t.getAttribute("data-id"); sel.dispatchEvent(new Event("change",{bubbles:true})); });
+    // dépôt direct sur les deux cartes (photo actuelle / nouvelle photo)
+    [].forEach.call(document.querySelectorAll("#viewContainer .grid.cols-2 .card"),function(c){
+      c.addEventListener("dragover",function(e){ e.preventDefault(); c.style.outline="3px dashed var(--primary,#1d6fb8)"; });
+      c.addEventListener("dragleave",function(){ c.style.outline=""; });
+      c.addEventListener("drop",function(e){ e.preventDefault(); c.style.outline=""; if(e.dataTransfer&&e.dataTransfer.files.length) psHandleFiles(e.dataTransfer.files,null); });
+    });
+    upd();
+  }
+
+  ["dragover","drop"].forEach(function(ev){ window.addEventListener(ev,function(e){ if(document.getElementById("ps_student") && e.dataTransfer && [].indexOf.call(e.dataTransfer.types||[],"Files")>=0) e.preventDefault(); }); });
+
+  /* ------- Carte individuelle : flèches pour faire défiler les élèves ------- */
+  function cardNavStep(dir, selId){
+    var sel = document.getElementById(selId || "cardStudentSel");
+    if (!sel) return;
+    var n = sel.options.length, idx = sel.selectedIndex;
+    if (n < 2) return;
+    // les options valides sont celles avec une valeur (la 1ère est « Choisir un élève »)
+    var first = 1, last = n - 1, next;
+    if (idx < first) next = dir > 0 ? first : last;
+    else { next = idx + dir; if (next > last) next = first; if (next < first) next = last; }
+    sel.selectedIndex = next;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  function cardNavUpdate(){
+    var sel = document.getElementById("cardStudentSel"), c = document.getElementById("cardNavCount");
+    if (!sel || !c) return;
+    var total = Math.max(0, sel.options.length - 1), idx = sel.selectedIndex;
+    c.textContent = (idx >= 1 ? idx : "–") + " / " + total;
+  }
+  function injectCardNav(){
+    var sel = document.getElementById("cardStudentSel");
+    if (!sel) return;
+    var box = document.getElementById("cardNavBox");
+    if (box){ if (box.previousElementSibling === sel){ cardNavUpdate(); return; } box.remove(); }
+    box = document.createElement("span");
+    box.id = "cardNavBox";
+    box.style.cssText = "display:inline-flex;align-items:center;gap:6px;flex-wrap:nowrap;";
+    box.innerHTML = "<button class=\"btn secondary\" id=\"cardPrevBtn\" type=\"button\" title=\"Élève précédent (flèche gauche)\" style=\"padding:6px 12px;font-weight:700;\">← Précédent</button>"
+      + "<b id=\"cardNavCount\" style=\"min-width:56px;text-align:center;\">– / –</b>"
+      + "<button class=\"btn secondary\" id=\"cardNextBtn\" type=\"button\" title=\"Élève suivant (flèche droite)\" style=\"padding:6px 12px;font-weight:700;\">Suivant →</button>";
+    sel.insertAdjacentElement("afterend", box);
+    document.getElementById("cardPrevBtn").addEventListener("click", function(){ cardNavStep(-1); });
+    document.getElementById("cardNextBtn").addEventListener("click", function(){ cardNavStep(1); });
+    sel.addEventListener("change", function(){ setTimeout(cardNavUpdate, 0); });
+    cardNavUpdate();
+  }
+  (function(){
+    var scheduled = false;
+    function check(){ scheduled = false; try { injectCardNav(); injectPhotoNav(); } catch(e){} }
+    new MutationObserver(function(){ if (!scheduled){ scheduled = true; requestAnimationFrame(check); } })
+      .observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener("keydown", function(e){
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      var t = e.target, tag = t && t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (t && t.isContentEditable)) return;
+      var navId = document.getElementById("cardStudentSel") ? "cardStudentSel" : (document.getElementById("ps_student") ? "ps_student" : null); if (!navId) return;
+      var mb=document.querySelector("#modalBox"); if (mb && mb.offsetParent!==null) return;
+      e.preventDefault(); cardNavStep(e.key === "ArrowRight" ? 1 : -1, navId);
+    });
+  })();
+
   /* exposition pour tests / extensions */
   window.PreschoolModule = { isPreschoolClass: isPreschoolClass, isPreschoolStudent: isPreschoolStudent, sections: SECTIONS, templates: PRESCHOOL_TEMPLATES, render: renderPreschoolCard };
 })();
