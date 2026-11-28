@@ -1483,6 +1483,340 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     return _origOpenModal.apply(this, arguments);
   };
 
+  /* ------- Arrière-plan des photos : détourage + fond uni ------- */
+  var BG_COLORS = [
+    ["Blanc","#FFFFFF"],["Blanc cassé","#F4F1EA"],["Gris clair","#E4E7EB"],["Gris perle","#C9CFD6"],
+    ["Bleu ciel","#BFDDF5"],["Bleu clair","#8EC1EC"],["Bleu photo","#4A90D0"],["Bleu royal","#1F5FA8"],
+    ["Bleu marine","#1B2F5B"],["Turquoise","#7FD6D1"],["Vert menthe","#BFE6CB"],["Vert","#2E8B57"],
+    ["Vert foncé","#14573A"],["Jaune pâle","#FBEFB0"],["Orange","#F2994A"],["Rouge","#C62F2F"],
+    ["Bordeaux","#7A1F2B"],["Rose","#F6C6D5"],["Lavande","#D9CCF0"],["Beige","#E8D9BE"]
+  ];
+  var BG_LS = "cartesid_photobg";
+  var BG_DEF = { color:"#BFDDF5", tol:34, soft:1.2, shift:0, auto:false };
+  function bgLoad(){ try { return Object.assign({}, BG_DEF, JSON.parse(localStorage.getItem(BG_LS)||"{}")); } catch(e){ return Object.assign({}, BG_DEF); } }
+  function bgSave(o){ try { localStorage.setItem(BG_LS, JSON.stringify(o)); } catch(e){} }
+  function bgHex(h){ h=String(h||"").replace("#",""); if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2]; var n=parseInt(h,16); if(isNaN(n)||h.length!==6) return null; return [(n>>16)&255,(n>>8)&255,n&255]; }
+
+  var _lin = null;
+  function bgLab(d, n){
+    if(!_lin){ _lin=new Float32Array(256); for(var i=0;i<256;i++){ var c=i/255; _lin[i]=c>.04045?Math.pow((c+.055)/1.055,2.4):c/12.92; } }
+    var L=new Float32Array(n), A=new Float32Array(n), B=new Float32Array(n);
+    function f(t){ return t>.008856?Math.cbrt(t):7.787*t+16/116; }
+    for(var k=0;k<n;k++){
+      var r=_lin[d[k*4]], g=_lin[d[k*4+1]], b=_lin[d[k*4+2]];
+      var x=f((r*.4124+g*.3576+b*.1805)/.95047), y=f(r*.2126+g*.7152+b*.0722), z=f((r*.0193+g*.1192+b*.9505)/1.08883);
+      L[k]=116*y-16; A[k]=500*(x-y); B[k]=200*(y-z);
+    }
+    return {L:L,A:A,B:B};
+  }
+  /* modèle du fond : on échantillonne les bords latéraux et les coins du haut (le haut-centre peut contenir les cheveux) */
+  function bgModel(lab, w, h){
+    var S=[], bx=Math.max(3,Math.round(w*.06)), ymax=Math.round(h*.62), cw=Math.round(w*.28), by=Math.max(3,Math.round(h*.06)), x, y;
+    function add(x,y){ var i=y*w+x; S.push([lab.L[i],lab.A[i],lab.B[i]]); }
+    for(y=0;y<ymax;y+=2) for(x=0;x<bx;x++){ add(x,y); add(w-1-x,y); }
+    for(y=0;y<by;y++) for(x=0;x<cw;x+=2){ add(x,y); add(w-1-x,y); }
+    var K=2, cen=[S[0]], i, j, c;
+    var far=S[0], fd=-1;
+    for(i=0;i<S.length;i++){ var dd=0,s=S[i],q=cen[0]; dd=(s[0]-q[0])*(s[0]-q[0])+(s[1]-q[1])*(s[1]-q[1])+(s[2]-q[2])*(s[2]-q[2]); if(dd>fd){fd=dd;far=s;} }
+    cen.push(far.slice());
+    var cnt=[0,0];
+    for(var it=0;it<8;it++){
+      var sum=[[0,0,0],[0,0,0]]; cnt=[0,0];
+      for(i=0;i<S.length;i++){
+        var best=0,bd=1e9;
+        for(c=0;c<K;c++){ var d2=Math.pow(S[i][0]-cen[c][0],2)+Math.pow(S[i][1]-cen[c][1],2)+Math.pow(S[i][2]-cen[c][2],2); if(d2<bd){bd=d2;best=c;} }
+        cnt[best]++; for(j=0;j<3;j++) sum[best][j]+=S[i][j];
+      }
+      for(c=0;c<K;c++) if(cnt[c]) for(j=0;j<3;j++) cen[c][j]=sum[c][j]/cnt[c];
+    }
+    var tot=cnt[0]+cnt[1], out=[];
+    for(c=0;c<K;c++) if(cnt[c]/tot>=0.15) out.push(cen[c]);
+    if(!out.length) out.push(cen[cnt[0]>=cnt[1]?0:1]);
+    return out;
+  }
+  /* segmentation : propagation depuis les bords à travers les pixels proches du fond (tolérant aux dégradés de lumière) */
+  function bgSegment(img, w, h, tol){
+    var n=w*h, lab=bgLab(img, n), L=lab.L, A=lab.A, B=lab.B, mod=bgModel(lab,w,h), D=new Float32Array(n), i, c;
+    for(i=0;i<n;i++){ var m=1e9; for(c=0;c<mod.length;c++){ var d=Math.sqrt((L[i]-mod[c][0])*(L[i]-mod[c][0])+(A[i]-mod[c][1])*(A[i]-mod[c][1])+(B[i]-mod[c][2])*(B[i]-mod[c][2])); if(d<m)m=d; } D[i]=m; }
+    var Tmax=8+tol*0.75, Tstep=3+tol*0.14, bg=new Uint8Array(n), q=new Int32Array(n), qh=0, qt=0;
+    function seed(x,y){ var k=y*w+x; if(!bg[k] && D[k]<Tmax*0.85){ bg[k]=1; q[qt++]=k; } }
+    var x,y;
+    for(x=0;x<w;x++){ seed(x,0); seed(x,h-1); }
+    for(y=0;y<h;y++){ seed(0,y); seed(w-1,y); }
+    while(qh<qt){
+      var p=q[qh++], px=p%w, py=(p/w)|0, nb=[px>0?p-1:-1, px<w-1?p+1:-1, py>0?p-w:-1, py<h-1?p+w:-1];
+      for(var t=0;t<4;t++){ var k=nb[t]; if(k<0||bg[k]) continue;
+        var kx=k%w, ky=(k/w)|0, ex=(kx/w-0.5)/0.25, ey=(ky/h-0.46)/0.27, core=(ex*ex+ey*ey)<1; // zone centrale : visage probable, critères plus stricts
+        if(D[k]>=(core?Tmax*0.62:Tmax)) continue;
+        var dl=L[k]-L[p], da=A[k]-A[p], db=B[k]-B[p]; if(Math.sqrt(dl*dl+da*da+db*db)>=(core?Tstep*0.5:Tstep)) continue;
+        bg[k]=1; q[qt++]=k; }
+    }
+    var fg=new Uint8Array(n); var bgCount=0; for(i=0;i<n;i++){ fg[i]=bg[i]?0:1; bgCount+=bg[i]; }
+    // ne garder que les grandes zones de premier plan (supprime les poussières)
+    var lbl=new Int32Array(n), areas=[0], nl=0, stack=new Int32Array(n);
+    for(i=0;i<n;i++){ if(!fg[i]||lbl[i]) continue; nl++; var sp=0, a=0; stack[sp++]=i; lbl[i]=nl;
+      while(sp){ var s=stack[--sp]; a++; var sx=s%w, sy=(s/w)|0;
+        if(sx>0&&fg[s-1]&&!lbl[s-1]){lbl[s-1]=nl;stack[sp++]=s-1;} if(sx<w-1&&fg[s+1]&&!lbl[s+1]){lbl[s+1]=nl;stack[sp++]=s+1;}
+        if(sy>0&&fg[s-w]&&!lbl[s-w]){lbl[s-w]=nl;stack[sp++]=s-w;} if(sy<h-1&&fg[s+w]&&!lbl[s+w]){lbl[s+w]=nl;stack[sp++]=s+w;} }
+      areas.push(a); }
+    var mx=0; for(i=1;i<areas.length;i++) if(areas[i]>mx) mx=areas[i];
+    for(i=0;i<n;i++) if(fg[i] && areas[lbl[i]]<mx*0.05) fg[i]=0;
+    return { fg:fg, frac:bgCount/n };
+  }
+  function bgMorph(m, w, h, steps){
+    var grow=steps>0, s=Math.abs(steps), n=w*h, cur=m, i;
+    for(var it=0;it<s;it++){
+      var nx=new Uint8Array(n);
+      for(i=0;i<n;i++){ var x=i%w, y=(i/w)|0, v=cur[i];
+        var l=x>0?cur[i-1]:v, r=x<w-1?cur[i+1]:v, u=y>0?cur[i-w]:v, d=y<h-1?cur[i+w]:v;
+        nx[i]= grow ? (v|l|r|u|d) : (v&l&r&u&d); }
+      cur=nx;
+    }
+    return cur;
+  }
+  function bgBlur(a, w, h, r){
+    var n=w*h, t=new Float32Array(n), o=new Float32Array(n), x, y, k, s, i;
+    for(var pass=0;pass<2;pass++){
+      for(y=0;y<h;y++){ for(x=0;x<w;x++){ s=0; for(k=-r;k<=r;k++){ var xx=x+k; xx=xx<0?0:(xx>=w?w-1:xx); s+=a[y*w+xx]; } t[y*w+x]=s/(2*r+1); } }
+      for(x=0;x<w;x++){ for(y=0;y<h;y++){ s=0; for(k=-r;k<=r;k++){ var yy=y+k; yy=yy<0?0:(yy>=h?h-1:yy); s+=t[yy*w+x]; } o[y*w+x]=s/(2*r+1); } }
+      a=o; if(pass===0){ t=new Float32Array(n); o=new Float32Array(n); }
+    }
+    return a;
+  }
+  /* canal alpha final : retouches manuelles (ov : 1=fond, 2=personne) → contour → adoucissement */
+  function bgAlpha(fg, ov, w, h, shift, soft){
+    var n=w*h, m=new Uint8Array(n), i;
+    for(i=0;i<n;i++){ m[i]=ov&&ov[i]===1?0:(ov&&ov[i]===2?1:fg[i]); }
+    if(shift) m=bgMorph(m,w,h,shift);
+    var f=new Float32Array(n); for(i=0;i<n;i++) f[i]=m[i];
+    var al=new Float32Array(n);
+    if(soft>0.05){
+      var r=Math.max(1,Math.ceil(soft)), e=0.14+0.36*Math.min(1,soft/r), bl=bgBlur(f,w,h,r), lo=0.5-e, hi=0.5+e;
+      for(i=0;i<n;i++){ var t=(bl[i]-lo)/(hi-lo); t=t<0?0:(t>1?1:t); al[i]=t*t*(3-2*t); }
+    } else al=f;
+    return al;
+  }
+  /* composition : suppression de la frange de couleur de l'ancien fond sur les bords puis pose sur la couleur choisie */
+  function bgCompose(img, al, w, h, rgb){
+    var n=w*h, out=new Uint8ClampedArray(n*4), i, x, y;
+    for(i=0;i<n;i++){
+      var a=al[i], o=i*4;
+      var r=img[o], g=img[o+1], b=img[o+2];
+      if(a>0.02 && a<0.98){
+        x=i%w; y=(i/w)|0; var sr=0,sg=0,sb=0,c=0;
+        for(var dy=-3;dy<=3;dy++){ var yy=y+dy; if(yy<0||yy>=h) continue;
+          for(var dx=-3;dx<=3;dx++){ var xx=x+dx; if(xx<0||xx>=w) continue; var k=yy*w+xx; if(al[k]>=0.98){ sr+=img[k*4]; sg+=img[k*4+1]; sb+=img[k*4+2]; c++; } } }
+        if(c){ var mix=(1-a)*0.85; r=r*(1-mix)+sr/c*mix; g=g*(1-mix)+sg/c*mix; b=b*(1-mix)+sb/c*mix; }
+      }
+      out[o]=r*a+rgb[0]*(1-a); out[o+1]=g*a+rgb[1]*(1-a); out[o+2]=b*a+rgb[2]*(1-a); out[o+3]=255;
+    }
+    return out;
+  }
+  function bgLoadImg(url, maxH){
+    return new Promise(function(res){
+      var im=new Image(); im.onload=function(){
+        var k=Math.min(1,(maxH||720)/im.height), w=Math.max(1,Math.round(im.width*k)), h=Math.max(1,Math.round(im.height*k));
+        var c=document.createElement("canvas"); c.width=w; c.height=h; var x=c.getContext("2d"); x.drawImage(im,0,0,w,h);
+        res({ w:w, h:h, data:x.getImageData(0,0,w,h).data, canvas:c });
+      }; im.onerror=function(){ res(null); }; im.src=url;
+    });
+  }
+  function bgToDataUrl(px, w, h){
+    var c=document.createElement("canvas"); c.width=w; c.height=h; var x=c.getContext("2d");
+    var id=x.createImageData(w,h); id.data.set(px); x.putImageData(id,0,0); return c.toDataURL("image/jpeg",0.92);
+  }
+  /* traitement complet d'une photo (lot / import automatique) */
+  async function bgProcess(url, cfg){
+    var im=await bgLoadImg(url,720); if(!im) return null;
+    var seg=bgSegment(im.data,im.w,im.h,cfg.tol), al=bgAlpha(seg.fg,null,im.w,im.h,cfg.shift,cfg.soft);
+    return { url:bgToDataUrl(bgCompose(im.data,al,im.w,im.h,bgHex(cfg.color)||[255,255,255]),im.w,im.h), frac:seg.frac };
+  }
+  function bgSig(u){ return u ? (u.length+":"+u.slice(-48)) : ""; }
+  function bgOriginalOf(s){ return (s && s.photoOrig && s.photoBgSig===bgSig(s.photo)) ? s.photoOrig : (s && s.photo) || ""; }
+
+  function bgStudentsList(){
+    var sel=document.getElementById("ps_student"); if(!sel) return [];
+    return [].slice.call(sel.options).filter(function(o){return o.value;}).map(function(o){ return {id:o.value,label:o.textContent}; });
+  }
+  function openBgTool(){
+    var sel=document.getElementById("ps_student"); if(!sel || document.getElementById("bgToolOverlay")) return;
+    var ids=bgStudentsList(); if(!ids.length){ try{toast("Aucun élève disponible");}catch(e){} return; }
+    var cfg=bgLoad(), cur=Math.max(0,ids.map(function(x){return x.id;}).indexOf(sel.value));
+    var overrides={}, im=null, seg=null, segKey="", ov=null, holdOrig=false, busy=false, raf=0, brush={mode:1,size:14}, painting=false;
+    var ov0=document.createElement("div"); ov0.id="bgToolOverlay";
+    ov0.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.62);display:flex;align-items:center;justify-content:center;padding:12px;";
+    var sw=BG_COLORS.map(function(c){ return "<button type=\"button\" class=\"bgSw\" data-c=\""+c[1]+"\" title=\""+c[0]+"\" style=\"width:34px;height:34px;border-radius:50%;border:2px solid var(--line);background:"+c[1]+";cursor:pointer;padding:0;\"></button>"; }).join("");
+    ov0.innerHTML=
+      "<div style=\"background:var(--surface,#fff);color:var(--ink,#111);border-radius:16px;max-width:980px;width:100%;max-height:96vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.4);\">"
+      +"<div style=\"display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);\"><h3 style=\"margin:0;font-size:18px;\">🎨 Arrière-plan des photos</h3><button class=\"btn secondary\" id=\"bgClose\" type=\"button\">✕ Fermer</button></div>"
+      +"<div style=\"display:flex;flex-wrap:wrap;gap:18px;padding:16px 18px;\">"
+        +"<div style=\"flex:0 0 auto;width:min(100%,330px);margin:0 auto;\">"
+          +"<div style=\"display:flex;align-items:center;gap:6px;margin-bottom:8px;\"><button class=\"btn secondary\" id=\"bgPrev\" type=\"button\" style=\"padding:6px 10px;font-weight:700;\">←</button><div id=\"bgName\" style=\"flex:1;text-align:center;font-weight:700;font-size:13px;line-height:1.2;\"></div><button class=\"btn secondary\" id=\"bgNext\" type=\"button\" style=\"padding:6px 10px;font-weight:700;\">→</button></div>"
+          +"<div style=\"position:relative;border-radius:12px;overflow:hidden;border:2px solid var(--line);background:repeating-conic-gradient(#e5e7eb 0% 25%,#fff 0% 50%) 0 0/16px 16px;touch-action:none;\"><canvas id=\"bgCv\" style=\"display:block;width:100%;height:auto;cursor:crosshair;touch-action:none;\"></canvas><div id=\"bgEmpty\" style=\"display:none;position:absolute;inset:0;align-items:center;justify-content:center;text-align:center;padding:20px;font-size:13px;background:var(--surface-2);\">Cet élève n'a pas encore de photo.</div></div>"
+          +"<div style=\"display:flex;gap:6px;margin-top:8px;\"><button class=\"btn secondary\" id=\"bgHold\" type=\"button\" style=\"flex:1;\">👁 Maintenir : voir l'original</button></div>"
+          +"<div id=\"bgInfo\" style=\"font-size:12px;color:var(--ink-soft);margin-top:8px;min-height:32px;\"></div>"
+        +"</div>"
+        +"<div style=\"flex:1 1 320px;min-width:280px;\">"
+          +"<h4 style=\"margin:0 0 8px;font-size:13px;text-transform:uppercase;color:var(--ink-soft);\">1 · Couleur du fond</h4>"
+          +"<div id=\"bgSwatches\" style=\"display:flex;flex-wrap:wrap;gap:8px;\">"+sw+"</div>"
+          +"<div style=\"display:flex;align-items:center;gap:8px;margin-top:10px;\"><label style=\"font-size:12.5px;\">Autre couleur</label><input type=\"color\" id=\"bgPick\" style=\"width:46px;height:34px;padding:0;border:1px solid var(--line);border-radius:8px;\"><input type=\"text\" id=\"bgHexIn\" maxlength=\"7\" style=\"width:90px;\" placeholder=\"#RRGGBB\"></div>"
+          +"<h4 style=\"margin:16px 0 8px;font-size:13px;text-transform:uppercase;color:var(--ink-soft);\">2 · Détourage</h4>"
+          +"<label style=\"display:block;font-size:12.5px;\">Sensibilité du fond : <b id=\"bgTolV\"></b><input type=\"range\" id=\"bgTol\" min=\"10\" max=\"70\" step=\"1\" style=\"width:100%;\"></label>"
+          +"<div style=\"font-size:11.5px;color:var(--ink-soft);margin:-2px 0 8px;\">Augmentez si des restes de l'ancien fond subsistent ; diminuez si le visage ou les vêtements sont mangés.</div>"
+          +"<label style=\"display:block;font-size:12.5px;\">Contour (− resserre / + élargit) : <b id=\"bgShiftV\"></b><input type=\"range\" id=\"bgShift\" min=\"-3\" max=\"3\" step=\"1\" style=\"width:100%;\"></label>"
+          +"<label style=\"display:block;font-size:12.5px;margin-top:6px;\">Adoucissement des bords : <b id=\"bgSoftV\"></b><input type=\"range\" id=\"bgSoft\" min=\"0\" max=\"3\" step=\"0.1\" style=\"width:100%;\"></label>"
+          +"<h4 style=\"margin:16px 0 8px;font-size:13px;text-transform:uppercase;color:var(--ink-soft);\">3 · Retouche manuelle (facultatif)</h4>"
+          +"<div style=\"display:flex;gap:6px;flex-wrap:wrap;\"><button class=\"btn secondary\" type=\"button\" id=\"bgModeErase\" style=\"flex:1;\">🧽 Effacer le fond</button><button class=\"btn secondary\" type=\"button\" id=\"bgModeKeep\" style=\"flex:1;\">🖌 Restaurer la personne</button></div>"
+          +"<label style=\"display:block;font-size:12.5px;margin-top:6px;\">Taille du pinceau : <b id=\"bgBrushV\"></b><input type=\"range\" id=\"bgBrush\" min=\"4\" max=\"60\" step=\"1\" style=\"width:100%;\"></label>"
+          +"<div style=\"font-size:11.5px;color:var(--ink-soft);\">Passez le doigt ou la souris sur la photo. <button class=\"btn secondary\" type=\"button\" id=\"bgResetBrush\" style=\"padding:2px 8px;font-size:11.5px;\">Annuler les retouches</button></div>"
+          +"<label class=\"checklistItem\" style=\"display:flex;gap:8px;align-items:center;margin-top:14px;font-size:12.5px;\"><input type=\"checkbox\" id=\"bgAuto\"> Appliquer automatiquement ce fond aux nouvelles photos importées ou déposées</label>"
+        +"</div>"
+      +"</div>"
+      +"<div style=\"display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px 16px;border-top:1px solid var(--line);align-items:center;\">"
+        +"<button class=\"btn\" id=\"bgApply\" type=\"button\">✔ Appliquer à cet élève</button>"
+        +"<button class=\"btn\" id=\"bgApplyNext\" type=\"button\">Appliquer et suivant →</button>"
+        +"<select id=\"bgScope\" style=\"min-width:170px;\"></select><button class=\"btn secondary\" id=\"bgAll\" type=\"button\">Appliquer au groupe</button>"
+        +"<span style=\"flex:1\"></span><button class=\"btn secondary\" id=\"bgRestore\" type=\"button\">↩ Restaurer l'original</button>"
+      +"</div>"
+      +"<div id=\"bgProg\" style=\"display:none;padding:0 18px 16px;font-size:12.5px;\"><div style=\"height:8px;background:var(--surface-2);border-radius:6px;overflow:hidden;\"><div id=\"bgBar\" style=\"height:100%;width:0;background:var(--primary,#1d6fb8);\"></div></div><div id=\"bgProgTxt\" style=\"margin-top:4px;\"></div></div>"
+      +"</div>";
+    document.body.appendChild(ov0);
+    function $(id){ return document.getElementById(id); }
+    var cv=$("bgCv"), ctx=cv.getContext("2d");
+    function say(t){ $("bgInfo").innerHTML=t; }
+    function student(){ var id=ids[cur].id; return currentStudents().filter(function(s){return s.id===id;})[0]||{}; }
+    function syncUi(){
+      $("bgTol").value=cfg.tol; $("bgTolV").textContent=cfg.tol;
+      $("bgShift").value=cfg.shift; $("bgShiftV").textContent=(cfg.shift>0?"+":"")+cfg.shift;
+      $("bgSoft").value=cfg.soft; $("bgSoftV").textContent=Number(cfg.soft).toFixed(1);
+      $("bgBrush").value=brush.size; $("bgBrushV").textContent=brush.size;
+      $("bgPick").value=/^#[0-9a-f]{6}$/i.test(cfg.color)?cfg.color:"#ffffff"; $("bgHexIn").value=cfg.color.toUpperCase();
+      $("bgAuto").checked=!!cfg.auto;
+      [].forEach.call(document.querySelectorAll(".bgSw"),function(b){ var on=b.getAttribute("data-c").toLowerCase()===cfg.color.toLowerCase(); b.style.outline=on?"3px solid var(--primary,#1d6fb8)":"none"; b.style.outlineOffset="2px"; });
+      $("bgModeErase").style.outline=brush.mode===1?"2px solid var(--primary,#1d6fb8)":"none"; $("bgModeKeep").style.outline=brush.mode===2?"2px solid var(--primary,#1d6fb8)":"none";
+    }
+    function fillScope(){
+      var all=currentStudents(), byId={}; all.forEach(function(s){byId[s.id]=s;});
+      var classes={}; ids.forEach(function(x){ var c=(byId[x.id]||{}).classe||""; if(c) classes[c]=(classes[c]||0)+((byId[x.id]||{}).photo?1:0); });
+      var o="<option value=\"*\">Tous les élèves de la liste ("+ids.filter(function(x){return (byId[x.id]||{}).photo;}).length+" photos)</option>";
+      Object.keys(classes).forEach(function(c){ o+="<option value=\"c:"+escapeHtml(c)+"\">Classe : "+escapeHtml(c)+" ("+classes[c]+")</option>"; });
+      $("bgScope").innerHTML=o;
+    }
+    function currentCfg(){ return { color:cfg.color, tol:cfg.tol, soft:cfg.soft, shift:cfg.shift, auto:cfg.auto }; }
+    async function load(){
+      var s=student(); $("bgName").textContent=(s.nom||"")+" "+(s.prenom||"")+"  ("+(cur+1)+"/"+ids.length+")";
+      im=null; seg=null; segKey=""; ov=overrides[ids[cur].id]||null;
+      $("bgEmpty").style.display=s.photo?"none":"flex";
+      ["bgApply","bgApplyNext","bgRestore"].forEach(function(i){ $(i).disabled=!s.photo; });
+      if(!s.photo){ cv.width=270; cv.height=360; ctx.clearRect(0,0,270,360); say("Importez d'abord une photo pour cet élève."); return; }
+      im=await bgLoadImg(bgOriginalOf(s),720); if(!im){ say("Photo illisible."); return; }
+      cv.width=im.w; cv.height=im.h; draw(true);
+    }
+    function draw(full){
+      if(!im) return;
+      if(holdOrig){ ctx.putImageData(new ImageData(new Uint8ClampedArray(im.data),im.w,im.h),0,0); return; }
+      var key=cfg.tol+"|"+ids[cur].id; if(!seg||segKey!==key){ seg=bgSegment(im.data,im.w,im.h,cfg.tol); segKey=key; }
+      var al=bgAlpha(seg.fg,ov,im.w,im.h,cfg.shift,cfg.soft);
+      ctx.putImageData(new ImageData(bgCompose(im.data,al,im.w,im.h,bgHex(cfg.color)||[255,255,255]),im.w,im.h),0,0);
+      var s=student(), msg="";
+      if(seg.frac<0.12) msg="⚠ Le fond n'a presque pas été détecté : augmentez la sensibilité ou utilisez « Effacer le fond ».";
+      else if(seg.frac>0.8) msg="⚠ Le fond détecté est très grand : diminuez la sensibilité ou utilisez « Restaurer la personne ».";
+      else msg="Fond détecté : "+Math.round(seg.frac*100)+" % de l'image.";
+      if(s.photoOrig && s.photoBgSig===bgSig(s.photo)) msg+="<br>L'original est conservé (« Restaurer l'original »).";
+      say(msg);
+    }
+    function sched(){ if(raf) return; raf=requestAnimationFrame(function(){ raf=0; draw(); }); }
+    function setCfg(k,v){ cfg[k]=v; bgSave(cfg); syncUi(); sched(); }
+    async function save(i, list, c, overrideMask){
+      var id=ids[i].id, s=list.filter(function(x){return x.id===id;})[0]; if(!s||!s.photo) return list;
+      var orig=bgOriginalOf(s), res;
+      if(overrideMask && i===cur && im){ // l'élève affiché : on garde les retouches manuelles
+        var sg=seg||bgSegment(im.data,im.w,im.h,c.tol), al=bgAlpha(sg.fg,overrideMask,im.w,im.h,c.shift,c.soft);
+        res={url:bgToDataUrl(bgCompose(im.data,al,im.w,im.h,bgHex(c.color)||[255,255,255]),im.w,im.h)};
+      } else res=await bgProcess(orig,c);
+      if(!res) return list;
+      return list.map(function(x){ return x.id===id ? Object.assign({},x,{photo:res.url,photoOrig:orig,photoBgSig:bgSig(res.url)}) : x; });
+    }
+    async function applyOne(goNext){
+      if(busy) return; busy=true;
+      try{
+        var list=await save(cur,currentStudents(),currentCfg(),ov);
+        saveStudents(list); try{ logHistory("fond photo",ids[cur].id); }catch(e){}
+        try{ toast("Fond appliqué"); }catch(e){}
+        delete overrides[ids[cur].id]; ov=null;
+        psRefresh();
+        if(goNext && cur<ids.length-1){ cur++; } else if(goNext){ try{toast("Dernier élève de la liste");}catch(e){} }
+        await load();
+      } finally { busy=false; }
+    }
+    async function applyGroup(){
+      if(busy) return; var scope=$("bgScope").value, all=currentStudents(), byId={}; all.forEach(function(s){byId[s.id]=s;});
+      var idx=[]; ids.forEach(function(x,i){ var s=byId[x.id]; if(!s||!s.photo) return; if(scope==="*"||scope==="c:"+(s.classe||"")) idx.push(i); });
+      if(!idx.length){ try{toast("Aucune photo à traiter");}catch(e){} return; }
+      if(!window.confirm("Appliquer ce fond à "+idx.length+" photo(s) ?\n(Les originaux sont conservés : « Restaurer l'original » reste possible.)")) return;
+      busy=true; $("bgProg").style.display="block"; var list=currentStudents(), done=0, low=0, c=currentCfg();
+      try{
+        for(var k=0;k<idx.length;k++){
+          var id=ids[idx[k]].id, s=list.filter(function(x){return x.id===id;})[0], orig=bgOriginalOf(s), r=await bgProcess(orig,c);
+          if(r){ if(r.frac<0.12||r.frac>0.8) low++; list=list.map(function(x){ return x.id===id?Object.assign({},x,{photo:r.url,photoOrig:orig,photoBgSig:bgSig(r.url)}):x; }); done++; }
+          $("bgBar").style.width=Math.round((k+1)/idx.length*100)+"%"; $("bgProgTxt").textContent=(k+1)+" / "+idx.length+" photos traitées…";
+          await new Promise(function(r){ setTimeout(r,0); });
+        }
+        saveStudents(list); try{ logHistory("fond photo (lot)",String(done)); }catch(e){}
+        $("bgProgTxt").textContent=done+" photo(s) traitée(s)."+(low?" ⚠ "+low+" à vérifier (fond mal détecté) — parcourez-les avec les flèches.":"");
+        psRefresh(); overrides={}; await load();
+      } finally { busy=false; }
+    }
+    async function restoreOne(){
+      var s=student(); if(!s.photo) return;
+      if(!(s.photoOrig && s.photoBgSig===bgSig(s.photo))){ try{toast("Cette photo est déjà l'originale");}catch(e){} return; }
+      var list=currentStudents().map(function(x){ if(x.id!==s.id) return x; var n=Object.assign({},x,{photo:x.photoOrig}); delete n.photoOrig; delete n.photoBgSig; return n; });
+      saveStudents(list); delete overrides[s.id]; ov=null; psRefresh(); try{toast("Original restauré");}catch(e){} await load();
+    }
+    // événements
+    [].forEach.call(document.querySelectorAll(".bgSw"),function(b){ b.addEventListener("click",function(){ setCfg("color",b.getAttribute("data-c")); }); });
+    $("bgPick").addEventListener("input",function(){ setCfg("color",this.value.toUpperCase()); });
+    $("bgHexIn").addEventListener("change",function(){ var v=this.value.trim(); if(v&&v[0]!=="#") v="#"+v; if(bgHex(v)) setCfg("color",v.toUpperCase()); else syncUi(); });
+    $("bgTol").addEventListener("input",function(){ setCfg("tol",+this.value); });
+    $("bgShift").addEventListener("input",function(){ setCfg("shift",+this.value); });
+    $("bgSoft").addEventListener("input",function(){ setCfg("soft",+this.value); });
+    $("bgBrush").addEventListener("input",function(){ brush.size=+this.value; syncUi(); });
+    $("bgModeErase").addEventListener("click",function(){ brush.mode=1; syncUi(); });
+    $("bgModeKeep").addEventListener("click",function(){ brush.mode=2; syncUi(); });
+    $("bgAuto").addEventListener("change",function(){ setCfg("auto",this.checked); });
+    $("bgResetBrush").addEventListener("click",function(){ delete overrides[ids[cur].id]; ov=null; sched(); });
+    $("bgPrev").addEventListener("click",function(){ if(busy) return; cur=(cur-1+ids.length)%ids.length; load(); });
+    $("bgNext").addEventListener("click",function(){ if(busy) return; cur=(cur+1)%ids.length; load(); });
+    $("bgApply").addEventListener("click",function(){ applyOne(false); });
+    $("bgApplyNext").addEventListener("click",function(){ applyOne(true); });
+    $("bgAll").addEventListener("click",applyGroup);
+    $("bgRestore").addEventListener("click",restoreOne);
+    function holdOn(e){ e.preventDefault(); holdOrig=true; draw(); } function holdOff(){ if(holdOrig){ holdOrig=false; draw(); } }
+    $("bgHold").addEventListener("pointerdown",holdOn); window.addEventListener("pointerup",holdOff); $("bgHold").addEventListener("pointerleave",holdOff);
+    function close(){ window.removeEventListener("pointerup",holdOff); document.removeEventListener("keydown",onKey,true); ov0.remove(); psRefresh(); }
+    $("bgClose").addEventListener("click",close);
+    ov0.addEventListener("mousedown",function(e){ if(e.target===ov0 && !painting) { /* clic hors fenêtre : ne ferme pas (évite les pertes) */ } });
+    function onKey(e){
+      if(!document.getElementById("bgToolOverlay")) return;
+      if(e.key==="Escape"){ e.stopPropagation(); close(); return; }
+      var t=e.target&&e.target.tagName; if(t==="INPUT"||t==="TEXTAREA"||t==="SELECT") return;
+      if(e.key==="ArrowRight"){ e.preventDefault(); $("bgNext").click(); } else if(e.key==="ArrowLeft"){ e.preventDefault(); $("bgPrev").click(); }
+    }
+    document.addEventListener("keydown",onKey,true);
+    // pinceau
+    function paint(e){
+      if(!im) return; var r=cv.getBoundingClientRect(), k=im.w/r.width, x=(e.clientX-r.left)*k, y=(e.clientY-r.top)*k, rad=brush.size*0.5*(im.w/270);
+      if(!ov){ ov=new Uint8Array(im.w*im.h); overrides[ids[cur].id]=ov; }
+      var x0=Math.max(0,Math.floor(x-rad)), x1=Math.min(im.w-1,Math.ceil(x+rad)), y0=Math.max(0,Math.floor(y-rad)), y1=Math.min(im.h-1,Math.ceil(y+rad));
+      for(var yy=y0;yy<=y1;yy++) for(var xx=x0;xx<=x1;xx++) if((xx-x)*(xx-x)+(yy-y)*(yy-y)<=rad*rad) ov[yy*im.w+xx]=brush.mode;
+      sched();
+    }
+    cv.addEventListener("pointerdown",function(e){ if(!im||holdOrig) return; painting=true; try{cv.setPointerCapture(e.pointerId);}catch(x){} paint(e); });
+    cv.addEventListener("pointermove",function(e){ if(painting) paint(e); });
+    cv.addEventListener("pointerup",function(){ painting=false; }); cv.addEventListener("pointercancel",function(){ painting=false; });
+    syncUi(); fillScope(); load();
+  }
+
   /* ------- Photos d'identité : défilement + glisser-déposer ------- */
   function psNorm(s){ return String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g," ").trim(); }
   function psAsk(file){
@@ -1498,10 +1832,21 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
       }; im.onerror=function(){res(null);}; im.src=dataUrl;
     });
   }
-  function psSetPhoto(id, photo){
-    var list=currentStudents().map(function(s){ return s.id===id?Object.assign({},s,{photo:photo}):s; });
+  function psSetPhoto(id, photo, orig){
+    var list=currentStudents().map(function(s){
+      if(s.id!==id) return s;
+      var n=Object.assign({},s,{photo:photo});
+      if(orig){ n.photoOrig=orig; n.photoBgSig=bgSig(photo); } else { delete n.photoOrig; delete n.photoBgSig; }
+      return n;
+    });
     saveStudents(list);
     try{ logHistory("photo identité", id); }catch(e){}
+  }
+  /* si « fond automatique » est activé : remplace le fond de la nouvelle photo, en gardant l'original */
+  async function psMaybeBg(photo){
+    var c=bgLoad(); if(!c.auto) return [photo,null];
+    try{ var r=await bgProcess(photo,c); if(r) return [r.url,photo]; }catch(e){}
+    return [photo,null];
   }
   function psCurrent(){
     var sel=document.getElementById("ps_student"), c=document.getElementById("ps_current"); if(!sel||!c||!sel.value) return;
@@ -1523,7 +1868,7 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     if(files.length===1){
       if(!id){ try{toast("Choisissez d'abord un élève");}catch(e){} return; }
       var url=await psAsk(files[0]);
-      openPhotoEditor(url,function(photo){ psSetPhoto(id,photo); psRefresh(); try{toast("Photo appliquée");}catch(e){} });
+      openPhotoEditor(url,async function(photo){ var r=await psMaybeBg(photo); psSetPhoto(id,r[0],r[1]); psRefresh(); try{toast(r[1]?"Photo appliquée avec le nouveau fond":"Photo appliquée");}catch(e){} });
       return;
     }
     var studs=[].slice.call(sel.options).filter(function(o){return o.value;}).map(function(o){ return o.value; });
@@ -1534,12 +1879,12 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
       studs.forEach(function(sid){ if(found||used[sid]) return; var s=byId[sid]; if(!s) return;
         var m=psNorm(s.matricule), n=psNorm(s.nom), p=psNorm(s.prenom);
         if((m && toks.indexOf(m)>=0) || (n && p && base.indexOf(n)>=0 && base.indexOf(p)>=0)) found=sid; });
-      if(found){ used[found]=1; var d=await psCrop(await psAsk(files[i])); if(d){ psSetPhoto(found,d); done++; byName++; } }
+      if(found){ used[found]=1; var d=await psCrop(await psAsk(files[i])); if(d){ var r1=await psMaybeBg(d); psSetPhoto(found,r1[0],r1[1]); done++; byName++; } }
       else rest.push(files[i]);
     }
     var start=Math.max(0,studs.indexOf(id)), order=studs.slice(start).concat(studs.slice(0,start)).filter(function(s){return !used[s];});
     for(var j=0;j<rest.length && j<order.length;j++){
-      used[order[j]]=1; var d2=await psCrop(await psAsk(rest[j])); if(d2){ psSetPhoto(order[j],d2); done++; }
+      used[order[j]]=1; var d2=await psCrop(await psAsk(rest[j])); if(d2){ var r2=await psMaybeBg(d2); psSetPhoto(order[j],r2[0],r2[1]); done++; }
     }
     psRefresh();
     try{ toast(done+" photo(s) appliquée(s)"+(byName?" — "+byName+" reconnue(s) par le nom/matricule":"")+(rest.length>order.length?" — certaines non placées":"")); }catch(e){}
@@ -1566,8 +1911,10 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
     box.style.cssText="display:inline-flex;align-items:center;gap:6px;margin-left:8px;";
     box.innerHTML="<button class=\"btn secondary\" id=\"psPrevBtn\" type=\"button\" title=\"Élève précédent (flèche gauche)\" style=\"padding:6px 12px;font-weight:700;\">← Précédent</button>"
       +"<b id=\"psNavCount\" style=\"min-width:56px;text-align:center;\">– / –</b>"
-      +"<button class=\"btn secondary\" id=\"psNextBtn\" type=\"button\" title=\"Élève suivant (flèche droite)\" style=\"padding:6px 12px;font-weight:700;\">Suivant →</button>";
+      +"<button class=\"btn secondary\" id=\"psNextBtn\" type=\"button\" title=\"Élève suivant (flèche droite)\" style=\"padding:6px 12px;font-weight:700;\">Suivant →</button>"
+      +"<button class=\"btn\" id=\"psBgBtn\" type=\"button\" title=\"Changer l'arrière-plan des photos\" style=\"padding:6px 12px;font-weight:700;margin-left:6px;\">🎨 Arrière-plan</button>";
     sel.insertAdjacentElement("afterend",box);
+    document.getElementById("psBgBtn").addEventListener("click",openBgTool);
     function upd(){ var c=document.getElementById("psNavCount"); if(!c) return; c.textContent=(sel.selectedIndex>=1?sel.selectedIndex:"–")+" / "+Math.max(0,sel.options.length-1); psCurrent(); psStrip(); }
     document.getElementById("psPrevBtn").addEventListener("click",function(){ cardNavStep(-1,"ps_student"); });
     document.getElementById("psNextBtn").addEventListener("click",function(){ cardNavStep(1,"ps_student"); });
@@ -1642,13 +1989,13 @@ const _0x249c42=_0x4de3;(function(_0x1b04e2,_0x40db56){const _0x202389=_0x4de3,_
       var t = e.target, tag = t && t.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || (t && t.isContentEditable)) return;
       var navId = document.getElementById("cardStudentSel") ? "cardStudentSel" : (document.getElementById("ps_student") ? "ps_student" : null); if (!navId) return;
-      var mb=document.querySelector("#modalBox"); if (mb && mb.offsetParent!==null) return;
+      if (document.getElementById("bgToolOverlay")) return; var mb=document.querySelector("#modalBox"); if (mb && mb.offsetParent!==null) return;
       e.preventDefault(); cardNavStep(e.key === "ArrowRight" ? 1 : -1, navId);
     });
   })();
 
   /* exposition pour tests / extensions */
-  window.PreschoolModule = { isPreschoolClass: isPreschoolClass, isPreschoolStudent: isPreschoolStudent, sections: SECTIONS, templates: PRESCHOOL_TEMPLATES, render: renderPreschoolCard };
+  window.PreschoolModule = { bg:{process:bgProcess,colors:BG_COLORS,open:openBgTool}, isPreschoolClass: isPreschoolClass, isPreschoolStudent: isPreschoolStudent, sections: SECTIONS, templates: PRESCHOOL_TEMPLATES, render: renderPreschoolCard };
 })();
 
 </script>
